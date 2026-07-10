@@ -1,0 +1,43 @@
+@import '../../../styles/mixins.less';
+
+.intru-lobby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 64px);
+}
+
+.intru-lobby__title {
+  text-align: center;
+  .section-title();
+}
+
+.intru-lobby__subtitle {
+  text-align: center;
+  color: #6b7280;
+  margin: 8px 0 24px;
+}
+
+.intru-lobby__field {
+  margin-bottom: 12px;
+
+  .MuiOutlinedInput-root {
+    border-radius: 4px 9px 6px 4px;
+  }
+}
+
+.intru-lobby__cta {
+  margin-bottom: 8px;
+}
+
+.intru-lobby__divider {
+  margin: 20px 0;
+  font-family: 'Caveat', cursive;
+  color: #9ca3af;
+}
+
+.intru-lobby__error {
+  color: #b91c1c;
+  margin-bottom: 12px;
+  text-align: center;
+}

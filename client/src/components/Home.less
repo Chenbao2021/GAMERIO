@@ -1,0 +1,104 @@
+@import '../styles/mixins.less';
+
+.home-section {
+  .section-padding();
+  min-height: calc(100vh - 64px);
+}
+
+.home-title {
+  text-align: center;
+  .section-title();
+}
+
+.home-subtitle {
+  text-align: center;
+  color: #6b7280;
+  margin-top: 8px;
+  margin-bottom: 32px;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media @sm {
+  .home-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.home-card {
+  .sketch-card();
+  .sketch-card-hover();
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+
+  &--yellow {
+    background: #fef9c3;
+    border-color: #ca8a04;
+  }
+  &--blue {
+    background: #dbeafe;
+    border-color: #3b82f6;
+  }
+  &--green {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+  }
+  &--pink {
+    background: #fce7f3;
+    border-color: #f9a8d4;
+  }
+  &--orange {
+    background: #ffedd5;
+    border-color: #fdba74;
+  }
+  &--purple {
+    background: #ede9fe;
+    border-color: #c4b5fd;
+  }
+
+  &--disabled {
+    opacity: 0.55;
+    cursor: default;
+
+    &:hover {
+      transform: none;
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12);
+    }
+  }
+}
+
+.home-card__emoji {
+  font-size: 2.4rem;
+}
+
+.home-card__title {
+  margin: 0;
+}
+
+.home-card__description {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.home-card__badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #2d2d2d;
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px 7px 5px 2px;
+  transform: rotate(-2deg);
+}
