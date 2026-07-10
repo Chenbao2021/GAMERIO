@@ -20,7 +20,9 @@ export default function IntruGame(): JSX.Element {
   const [joinError, setJoinError] = useState<string | null>(null)
 
   const alreadyInRoom = state.roomCode === roomCode
-  const isSpectator = state.spectatorId !== null && state.spectatorId === state.playerId
+  const isSpectator =
+    (state.spectatorId !== null && state.spectatorId === state.playerId) ||
+    (state.playerId !== null && state.eliminated.includes(state.playerId))
 
   function handleLeave(): void {
     leaveRoom(roomCode)

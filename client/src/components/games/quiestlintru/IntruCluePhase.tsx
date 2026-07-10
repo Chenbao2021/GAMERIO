@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { Box, Typography, Button, TextField } from '@mui/material'
 import { useIntruRoom } from '../../../context/IntruRoomContext'
 import IntruClueList from './IntruClueList'
+import IntruEliminationBanner from './IntruEliminationBanner'
 import './IntruCluePhase.less'
 
 interface Props {
@@ -22,6 +23,7 @@ export default function IntruCluePhase({ roomCode }: Props): JSX.Element {
 
   return (
     <Box className="intru-clue fade-in">
+      <IntruEliminationBanner />
       <Typography className="intru-clue__round">
         Tour {state.round}/{state.totalRounds}
       </Typography>

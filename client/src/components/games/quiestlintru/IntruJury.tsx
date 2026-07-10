@@ -2,11 +2,13 @@ import { type JSX } from 'react'
 import { Box, Typography } from '@mui/material'
 import { useIntruRoom } from '../../../context/IntruRoomContext'
 import IntruClueList from './IntruClueList'
+import IntruEliminationBanner from './IntruEliminationBanner'
 import './IntruJury.less'
 
 export default function IntruJury(): JSX.Element {
   const { state } = useIntruRoom()
   const currentPlayer = state.players.find((p) => p.id === state.turnOrder[state.currentTurnIndex])
+  const wasEliminated = state.playerId !== null && state.eliminated.includes(state.playerId)
 
   function statusText(): string {
     if (state.phase === 'clues') {
@@ -27,8 +29,11 @@ export default function IntruJury(): JSX.Element {
         Tu es le jury de cette manche
       </Typography>
       <Typography className="intru-jury__subtitle">
-        Comme tu as choisi les mots, tu ne joues pas — observe la partie sans intervenir.
+        {wasEliminated
+          ? "Tu as été éliminé(e) par erreur — tu observes la fin de la partie sans intervenir."
+          : 'Comme tu as choisi les mots, tu ne joues pas — observe la partie sans intervenir.'}
       </Typography>
+      <IntruEliminationBanner />
       <Typography className="intru-jury__status">{statusText()}</Typography>
       <IntruClueList />
     </Box>

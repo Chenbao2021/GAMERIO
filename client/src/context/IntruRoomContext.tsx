@@ -5,6 +5,7 @@ import {
   type ClueEntry,
   type CustomWords,
   type DuelUpdateInfo,
+  type EliminationInfo,
   type IntruRoomState,
   type PhasePayload,
   type PlayerInfo,
@@ -87,13 +88,18 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
             hasVoted: false,
             spectatorId: payload.spectatorId ?? null,
             clues: payload.clues ?? s.clues,
+            eliminated: payload.eliminated ?? s.eliminated,
+            // A brand-new manche (round 1) starts with a clean slate — any elimination banner
+            // left over belongs to whichever manche just ended.
+            lastElimination: payload.round === 1 ? null : s.lastElimination,
             reveal: null,
             result: null,
             interrupted: false,
           }
         }
         if (payload.phase === 'voting') {
-          return { ...s, phase: 'voting', hasVoted: false }
+          // A fresh vote is starting, so the previous round's elimination recap no longer applies.
+          return { ...s, phase: 'voting', hasVoted: false, lastElimination: null }
         }
         if (payload.phase === 'duel') {
           return { ...s, phase: 'duel', hasDuelGuessed: false, duelUpdate: null }
@@ -107,6 +113,14 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
 
     function onVoteUpdate(payload: VoteUpdateInfo): void {
       setState((s) => ({ ...s, voteUpdate: payload }))
+    }
+
+    function onElimination(payload: EliminationInfo): void {
+      setState((s) => ({
+        ...s,
+        lastElimination: payload,
+        eliminated: payload.eliminatedId ? [...s.eliminated, payload.eliminatedId] : s.eliminated,
+      }))
     }
 
     function onDuelUpdate(payload: DuelUpdateInfo): void {
@@ -132,6 +146,8 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
         phase: 'lobby',
         privateWord: null,
         spectatorId: null,
+        eliminated: [],
+        lastElimination: null,
         clues: [],
         reveal: null,
         result: null,
@@ -144,6 +160,7 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
     socket.on('game:phase', onPhase)
     socket.on('game:voteUpdate', onVoteUpdate)
     socket.on('game:duelUpdate', onDuelUpdate)
+    socket.on('game:elimination', onElimination)
     socket.on('game:clues', onClues)
     socket.on('game:reveal', onReveal)
     socket.on('game:result', onResult)
@@ -156,6 +173,7 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
       socket.off('game:phase', onPhase)
       socket.off('game:voteUpdate', onVoteUpdate)
       socket.off('game:duelUpdate', onDuelUpdate)
+      socket.off('game:elimination', onElimination)
       socket.off('game:clues', onClues)
       socket.off('game:reveal', onReveal)
       socket.off('game:result', onResult)

@@ -24,6 +24,7 @@ export interface PhasePayload {
   totalRounds?: number
   spectatorId?: string | null
   clues?: ClueEntry[]
+  eliminated?: string[]
 }
 
 export interface VoteUpdateInfo {
@@ -42,12 +43,17 @@ export interface CustomWords {
   intruder: string
 }
 
+export interface EliminationInfo {
+  eliminatedId: string | null
+}
+
 export interface RevealInfo {
   intruderId: string
   majorityWord: string
   intruderWord: string
   voteTally: Record<string, number>
   votedOutCorrectly: boolean
+  wronglyEliminatedId: string | null
 }
 
 export interface ResultInfo {
@@ -77,6 +83,8 @@ export interface IntruRoomState {
   duelUpdate: DuelUpdateInfo | null
   hasDuelGuessed: boolean
   spectatorId: string | null
+  eliminated: string[]
+  lastElimination: EliminationInfo | null
   reveal: RevealInfo | null
   result: ResultInfo | null
   interrupted: boolean
@@ -100,6 +108,8 @@ export const initialIntruRoomState: IntruRoomState = {
   duelUpdate: null,
   hasDuelGuessed: false,
   spectatorId: null,
+  eliminated: [],
+  lastElimination: null,
   reveal: null,
   result: null,
   interrupted: false,

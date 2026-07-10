@@ -9,7 +9,7 @@ interface Props {
 
 export default function IntruVoting({ roomCode }: Props): JSX.Element {
   const { state, castVote, castPass } = useIntruRoom()
-  const votable = state.players.filter((p) => p.id !== state.playerId)
+  const votable = state.players.filter((p) => p.id !== state.playerId && state.turnOrder.includes(p.id))
 
   return (
     <Box className="intru-voting fade-in">

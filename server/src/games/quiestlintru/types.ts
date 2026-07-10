@@ -23,6 +23,7 @@ export interface GameState {
   votes: Record<string, string> // voterId -> targetPlayerId
   passed: string[] // voterIds who chose not to vote for anyone
   voteTally: Record<string, number>
+  eliminated: string[] // playerIds wrongly voted out in an earlier round of this manche, they now spectate
   duelGuesses: Record<string, boolean> // playerId -> self-reported "did I guess the other's word?" (oral, 2-player mode only)
   votedOutCorrectly: boolean
   wins: Record<string, number> // playerId -> win count, persists across playAgain within the room
@@ -42,6 +43,7 @@ export function createInitialGameState(): GameState {
     votes: {},
     passed: [],
     voteTally: {},
+    eliminated: [],
     duelGuesses: {},
     votedOutCorrectly: false,
     wins: {},

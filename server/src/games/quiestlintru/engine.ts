@@ -28,15 +28,20 @@ export function tallyVotes(votes: Record<string, string>): Record<string, number
 }
 
 /**
- * True only if the intruder has strictly the most votes — a tie for first place means
- * the intruder blended in well enough and wins outright (no guess phase).
+ * Who gets eliminated by this vote, or null if the vote is inconclusive:
+ * - nobody voted for anyone (everybody passed)
+ * - a tie for first place (nobody stood out enough to be singled out)
+ * - at least as many people passed as voted for the top target (not enough of the
+ *   group actually committed to an accusation to justify eliminating someone)
  */
-export function didVoteOutCorrectly(tally: Record<string, number>, intruderId: string): boolean {
-  const intruderVotes = tally[intruderId] ?? 0
-  if (intruderVotes === 0) return false
-  const maxVotes = Math.max(...Object.values(tally))
-  const playersAtMax = Object.values(tally).filter((v) => v === maxVotes).length
-  return intruderVotes === maxVotes && playersAtMax === 1
+export function resolveElimination(tally: Record<string, number>, passedCount: number): string | null {
+  const entries = Object.entries(tally)
+  if (entries.length === 0) return null
+  const maxVotes = Math.max(...entries.map(([, votes]) => votes))
+  if (passedCount >= maxVotes) return null
+  const topCandidates = entries.filter(([, votes]) => votes === maxVotes)
+  if (topCandidates.length !== 1) return null
+  return topCandidates[0][0]
 }
 
 // Strips the combining diacritical marks left behind by NFD normalization,

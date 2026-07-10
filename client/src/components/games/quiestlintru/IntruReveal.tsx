@@ -19,6 +19,7 @@ export default function IntruReveal({ roomCode, onLeave }: Props): JSX.Element {
 
   const intruder = state.players.find((p) => p.id === state.reveal?.intruderId)
   const isIntruder = state.playerId === state.reveal?.intruderId
+  const wronglyEliminated = state.players.find((p) => p.id === state.reveal?.wronglyEliminatedId)
   const resultClass = `intru-reveal__result intru-reveal__result--${state.result?.winner === 'civils' ? 'green' : 'orange'}`
 
   function handleGuess(): void {
@@ -50,7 +51,9 @@ export default function IntruReveal({ roomCode, onLeave }: Props): JSX.Element {
           <Typography className="intru-reveal__vote-result">
             {state.reveal.votedOutCorrectly
               ? "L'intrus a été démasqué par le vote !"
-              : "Le groupe ne l'a pas identifié clairement."}
+              : wronglyEliminated
+                ? `${wronglyEliminated.pseudo} a été éliminé(e) par erreur, l'intrus s'en sort.`
+                : "Le groupe ne l'a pas identifié clairement."}
           </Typography>
         </Box>
       )}

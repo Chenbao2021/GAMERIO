@@ -6,7 +6,7 @@ import {
   assignIntruder,
   buildTurnOrder,
   tallyVotes,
-  didVoteOutCorrectly,
+  resolveElimination,
   checkGuess,
   normalize,
 } from './engine'
@@ -34,7 +34,7 @@ interface RoundSetup {
 
 // The host already knows any words they typed themselves, so they sit out that round as a
 // non-playing "jury" — as long as at least MIN_PLAYERS remain without them (2 remaining
-// naturally falls back to duel mode instead of voting, handled by advanceTurn/turnOrder.length).
+// naturally falls back to duel mode instead of voting, handled by startAccusationPhase).
 function resolveRoundSetup(room: Room<GameState>, raw?: CustomWordsPayload): RoundSetup | { error: string } {
   const customWordPair = buildCustomWordPair(raw)
   if (customWordPair && normalize(customWordPair.majority) === normalize(customWordPair.intruder)) {
@@ -84,6 +84,7 @@ function startRound(
   gs.votes = {}
   gs.passed = []
   gs.voteTally = {}
+  gs.eliminated = []
   gs.duelGuesses = {}
   gs.votedOutCorrectly = false
   gs.spectatorId = spectatorId
@@ -107,6 +108,7 @@ function startRound(
     totalRounds: gs.totalRounds,
     spectatorId,
     clues: [],
+    eliminated: [],
   })
 }
 
@@ -125,21 +127,18 @@ function advanceTurn(io: Server, room: Room<GameState>): void {
     return
   }
 
-  if (gs.round < gs.totalRounds) {
-    gs.round += 1
-    gs.currentTurnIndex = 0
-    io.to(room.code).emit('game:phase', {
-      phase: 'clues',
-      turnOrder: gs.turnOrder,
-      currentTurnIndex: gs.currentTurnIndex,
-      round: gs.round,
-      totalRounds: gs.totalRounds,
-    })
-    return
-  }
+  // Everyone has given a clue this round — time for an accusation, every round, not just the last.
+  startAccusationPhase(io, room)
+}
 
-  // With only 2 playing (a spectating host doesn't count), a vote is always a 1-1 tie —
-  // both players simultaneously try to guess the OTHER player's word instead.
+// This only ever sees a fresh (never-eliminated-from) turnOrder: reaching exactly 2 players via a
+// wrongful mid-manche elimination ends the manche outright instead (see resolveVotes), so a duel
+// here always means the manche started with 2 players (or 3 with a spectating host).
+function startAccusationPhase(io: Server, room: Room<GameState>): void {
+  const gs = room.gameState
+
+  // With only 2 playing, a vote is always a 1-1 tie — both players simultaneously try to guess
+  // the OTHER player's word instead.
   if (gs.turnOrder.length === 2) {
     gs.phase = 'duel'
     gs.duelGuesses = {}
@@ -179,13 +178,15 @@ function finishRound(io: Server, room: Room<GameState>, intruderWins: boolean, g
   io.to(room.code).emit('game:result', { winner, guessedWord, wins: gs.wins })
 }
 
-// Reveals the intruder and settles the round given whether they were correctly singled out
-// (by vote, in 3+ player games, or by word-guess, in 2-player duels).
+// Reveals the intruder and settles the manche given whether they were correctly singled out
+// (by vote, in 3+ player games, or by word-guess, in 2-player duels). `wronglyEliminatedId` is set
+// when the manche ends on a vote that instead voted out an innocent player.
 function settleAccusation(
   io: Server,
   room: Room<GameState>,
   votedOutCorrectly: boolean,
   voteTally: Record<string, number>,
+  wronglyEliminatedId: string | null = null,
 ): void {
   const gs = room.gameState
   gs.voteTally = voteTally
@@ -198,10 +199,11 @@ function settleAccusation(
     intruderWord: gs.wordPair!.intruder,
     voteTally,
     votedOutCorrectly,
+    wronglyEliminatedId,
   })
 
   if (!votedOutCorrectly) {
-    // The group failed to single out the intruder — intruder wins outright.
+    // The manche is over without the intruder being caught — intruder wins outright.
     finishRound(io, room, true)
     return
   }
@@ -214,11 +216,45 @@ function settleAccusation(
   )
 }
 
+// Resolves one round's vote. Three outcomes:
+// - the intruder is singled out -> reveal + guessing phase, as before.
+// - the vote is inconclusive (tie, or as many passes as votes for the top target) -> nobody is
+//   eliminated, the manche just continues.
+// - an innocent player is voted out by mistake -> they're removed from play and start spectating;
+//   if that leaves 2 or fewer players, or this was the last round, the intruder wins outright
+//   (having survived this long without being unmasked); otherwise the manche continues.
 function resolveVotes(io: Server, room: Room<GameState>): void {
   const gs = room.gameState
   const tally = tallyVotes(gs.votes)
-  const votedOutCorrectly = didVoteOutCorrectly(tally, gs.intruderId)
-  settleAccusation(io, room, votedOutCorrectly, tally)
+  const eliminatedId = resolveElimination(tally, gs.passed.length)
+
+  if (eliminatedId === gs.intruderId) {
+    settleAccusation(io, room, true, tally)
+    return
+  }
+
+  if (eliminatedId) {
+    gs.turnOrder = gs.turnOrder.filter((id) => id !== eliminatedId)
+    gs.eliminated.push(eliminatedId)
+  }
+
+  const mancheOver = gs.round >= gs.totalRounds || gs.turnOrder.length <= 2
+  if (mancheOver) {
+    settleAccusation(io, room, false, tally, eliminatedId)
+    return
+  }
+
+  gs.round += 1
+  gs.currentTurnIndex = 0
+  io.to(room.code).emit('game:elimination', { eliminatedId })
+  io.to(room.code).emit('game:phase', {
+    phase: 'clues',
+    turnOrder: gs.turnOrder,
+    currentTurnIndex: 0,
+    round: gs.round,
+    totalRounds: gs.totalRounds,
+    eliminated: gs.eliminated,
+  })
 }
 
 // 2-player duel: the actual guessing happens out loud between the two players (typing an exact
