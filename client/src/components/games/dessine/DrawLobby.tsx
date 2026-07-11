@@ -50,7 +50,7 @@ export default function DrawLobby(): JSX.Element {
           Dessine-moi un mot
         </Typography>
         <Typography className="draw-lobby__subtitle">
-          2 à 8 joueurs, un dessinateur par manche, les autres devinent à voix haute.
+          2 à 8 joueurs, un dessinateur par manche, les autres devinent à voix haute ou en tapant leur réponse.
         </Typography>
 
         <TextField

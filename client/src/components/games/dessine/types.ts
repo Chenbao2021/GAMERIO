@@ -34,6 +34,10 @@ export interface AckError {
   error?: string
 }
 
+export interface GuessAck extends AckError {
+  correct?: boolean
+}
+
 export interface DrawRoomState {
   roomCode: string | null
   playerId: string | null

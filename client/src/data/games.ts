@@ -26,7 +26,7 @@ export const games: GameMeta[] = [
     key: 'dessine-moi-un-mot',
     name: 'Dessine-moi un mot',
     description:
-      '2 à 8 joueurs, un dessinateur par manche dessine au doigt, les autres devinent à voix haute.',
+      '2 à 8 joueurs, un dessinateur par manche dessine au doigt, les autres devinent à voix haute ou en tapant.',
     emoji: '🎨',
     colorKey: 'blue',
     path: '/dessine',

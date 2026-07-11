@@ -17,3 +17,15 @@ export function pickWord(usedWords: string[]): string {
   const pool = remaining.length > 0 ? remaining : wordBank
   return pool[Math.floor(Math.random() * pool.length)]
 }
+
+// Strips the combining diacritical marks left behind by NFD normalization,
+// e.g. turns the NFD decomposition of "e-acute" back into plain "e".
+const DIACRITIC = new RegExp('\\p{Diacritic}', 'gu')
+
+export function normalize(word: string): string {
+  return word.trim().toLowerCase().normalize('NFD').replace(DIACRITIC, '')
+}
+
+export function checkGuess(guess: string, word: string): boolean {
+  return normalize(guess) === normalize(word)
+}

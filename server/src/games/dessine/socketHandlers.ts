@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io'
 import { RoomManager, Room, MIN_PLAYERS } from '../../rooms/RoomManager'
 import { GameState, createInitialGameState } from './types'
-import { buildTurnOrder, pickWord } from './engine'
+import { buildTurnOrder, checkGuess, pickWord } from './engine'
 
 const DRAW_DURATION_MS = 75_000
 
@@ -235,6 +235,32 @@ export function registerDessineHandlers(io: Server, socket: Socket, roomManager:
       ack({})
     },
   )
+
+  // Typed alternative to the oral "quelqu'un a trouvé" flow, for groups not sitting side by side.
+  // The first guesser to type the exact word resolves the round immediately, same as the drawer
+  // manually picking them — no double-scoring risk since a single Node event loop processes these
+  // one at a time, and the phase !== 'drawing' check rejects anything after the first hit.
+  socket.on('draw:round:guess', (payload: { roomCode: string; guess?: string }, ack: (res: unknown) => void) => {
+    const room = roomManager.getRoom(payload?.roomCode)
+    if (!room || room.gameState.phase !== 'drawing') {
+      ack({ error: 'Action impossible pour le moment.' })
+      return
+    }
+    const gs = room.gameState
+    const drawerId = gs.turnOrder[gs.currentDrawerIndex]
+    if (!gs.turnOrder.includes(socket.id) || socket.id === drawerId) {
+      ack({ error: 'Seuls les devineurs peuvent taper une réponse.' })
+      return
+    }
+
+    if (!checkGuess(payload.guess ?? '', gs.word ?? '')) {
+      ack({ correct: false })
+      return
+    }
+
+    resolveRound(io, room, socket.id)
+    ack({ correct: true })
+  })
 
   socket.on('draw:round:next', (payload: { roomCode: string }, ack: (res: unknown) => void) => {
     const room = roomManager.getRoom(payload?.roomCode)

@@ -4,6 +4,7 @@ import {
   type AckError,
   type DrawRoomState,
   type GameResultInfo,
+  type GuessAck,
   type PhasePayload,
   type PlayerInfo,
   type PrivateWord,
@@ -29,6 +30,7 @@ interface DrawRoomContextValue {
   configure: (roomCode: string, totalRounds: number) => void
   start: (roomCode: string) => Promise<AckError>
   solveRound: (roomCode: string, targetPlayerId: string | null) => Promise<AckError>
+  submitGuess: (roomCode: string, guess: string) => Promise<GuessAck>
   nextRound: (roomCode: string) => Promise<AckError>
   playAgain: (roomCode: string) => Promise<AckError>
   leaveRoom: (roomCode: string) => void
@@ -190,6 +192,18 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
     [socket],
   )
 
+  const submitGuess = useCallback(
+    (roomCode: string, guess: string): Promise<GuessAck> =>
+      new Promise((resolve) => {
+        socket.emit('draw:round:guess', { roomCode, guess }, (res: GuessAck) => {
+          // A wrong guess isn't an app error worth surfacing globally — only real failures are.
+          if (res.error) setState((s) => ({ ...s, error: res.error ?? null }))
+          resolve(res)
+        })
+      }),
+    [socket],
+  )
+
   const nextRound = useCallback(
     (roomCode: string): Promise<AckError> =>
       new Promise((resolve) => {
@@ -227,6 +241,7 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
     configure,
     start,
     solveRound,
+    submitGuess,
     nextRound,
     playAgain,
     leaveRoom,

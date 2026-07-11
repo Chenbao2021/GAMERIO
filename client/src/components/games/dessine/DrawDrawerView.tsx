@@ -30,7 +30,9 @@ export default function DrawDrawerView({ roomCode }: Props): JSX.Element {
         </Box>
       )}
 
-      <Typography className="draw-drawer__hint">Dessine ce mot, les autres devinent à voix haute.</Typography>
+      <Typography className="draw-drawer__hint">
+        Dessine ce mot, les autres devinent à voix haute ou en tapant leur réponse.
+      </Typography>
 
       <DrawCanvas roomCode={roomCode} interactive />
 
