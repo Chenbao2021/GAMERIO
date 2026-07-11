@@ -5,11 +5,14 @@ import Navbar from './components/Navbar'
 import PageLoader from './components/PageLoader'
 import { SocketProvider } from './context/SocketContext'
 import { IntruRoomProvider } from './context/IntruRoomContext'
+import { DrawRoomProvider } from './context/DrawRoomContext'
 import './App.less'
 
 const Home = lazy(() => import('./components/Home'))
 const IntruLobby = lazy(() => import('./components/games/quiestlintru/IntruLobby'))
 const IntruGame = lazy(() => import('./components/games/quiestlintru/IntruGame'))
+const DrawLobby = lazy(() => import('./components/games/dessine/DrawLobby'))
+const DrawGame = lazy(() => import('./components/games/dessine/DrawGame'))
 
 const theme = createTheme({
   palette: {
@@ -83,6 +86,14 @@ function IntruLayout(): JSX.Element {
   )
 }
 
+function DrawLayout(): JSX.Element {
+  return (
+    <DrawRoomProvider>
+      <Outlet />
+    </DrawRoomProvider>
+  )
+}
+
 export default function App(): JSX.Element {
   return (
     <StyledEngineProvider injectFirst>
@@ -97,6 +108,10 @@ export default function App(): JSX.Element {
                   <Route path="/intru" element={<IntruLayout />}>
                     <Route index element={<IntruLobby />} />
                     <Route path=":roomCode" element={<IntruGame />} />
+                  </Route>
+                  <Route path="/dessine" element={<DrawLayout />}>
+                    <Route index element={<DrawLobby />} />
+                    <Route path=":roomCode" element={<DrawGame />} />
                   </Route>
                 </Route>
               </Routes>
