@@ -1,10 +1,20 @@
-import { useEffect, useRef, type JSX, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useSocket } from '../../../context/SocketContext'
 import './DrawCanvas.less'
 
 interface Props {
   roomCode: string
   interactive: boolean
+}
+
+export interface DrawCanvasHandle {
+  clear: () => void
 }
 
 interface Point {
@@ -20,7 +30,7 @@ const EMIT_INTERVAL_MS = 30 // caps how often points hit the network, local draw
 // coordinates so it works across any phone screen size) and everyone else (read-only, just
 // renders whatever the drawer emits). No React state is involved in the hot path — every point
 // would otherwise trigger a re-render, which is the kind of jank this component exists to avoid.
-export default function DrawCanvas({ roomCode, interactive }: Props): JSX.Element {
+const DrawCanvas = forwardRef<DrawCanvasHandle, Props>(function DrawCanvas({ roomCode, interactive }, ref) {
   const socket = useSocket()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -62,6 +72,25 @@ export default function DrawCanvas({ roomCode, interactive }: Props): JSX.Elemen
     ctx.stroke()
   }
 
+  function clearCanvas(): void {
+    const ctx = ctxRef.current
+    const canvas = canvasRef.current
+    if (!ctx || !canvas) return
+    const rect = canvas.getBoundingClientRect()
+    ctx.clearRect(0, 0, rect.width, rect.height)
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      clear: () => {
+        clearCanvas()
+        socket.emit('draw:clear', { roomCode })
+      },
+    }),
+    [socket, roomCode],
+  )
+
   // Read-only mode: render whatever the drawer streams in.
   useEffect(() => {
     if (interactive) return
@@ -77,14 +106,20 @@ export default function DrawCanvas({ roomCode, interactive }: Props): JSX.Elemen
     function onEnd(): void {
       lastPointRef.current = null
     }
+    function onClear(): void {
+      clearCanvas()
+      lastPointRef.current = null
+    }
 
     socket.on('draw:stroke:start', onStart)
     socket.on('draw:stroke:point', onPoint)
     socket.on('draw:stroke:end', onEnd)
+    socket.on('draw:clear', onClear)
     return () => {
       socket.off('draw:stroke:start', onStart)
       socket.off('draw:stroke:point', onPoint)
       socket.off('draw:stroke:end', onEnd)
+      socket.off('draw:clear', onClear)
     }
   }, [socket, interactive])
 
@@ -129,4 +164,6 @@ export default function DrawCanvas({ roomCode, interactive }: Props): JSX.Elemen
       onPointerLeave={handlePointerUp}
     />
   )
-}
+})
+
+export default DrawCanvas

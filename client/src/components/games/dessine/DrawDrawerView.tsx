@@ -1,7 +1,7 @@
-import { type JSX } from 'react'
+import { useRef, type JSX } from 'react'
 import { Box, Typography, Button } from '@mui/material'
 import { useDrawRoom } from '../../../context/DrawRoomContext'
-import DrawCanvas from './DrawCanvas'
+import DrawCanvas, { type DrawCanvasHandle } from './DrawCanvas'
 import DrawTimer from './DrawTimer'
 import './DrawDrawerView.less'
 
@@ -11,6 +11,7 @@ interface Props {
 
 export default function DrawDrawerView({ roomCode }: Props): JSX.Element {
   const { state, solveRound } = useDrawRoom()
+  const canvasRef = useRef<DrawCanvasHandle | null>(null)
   const guessers = state.players.filter((p) => p.id !== state.playerId)
 
   return (
@@ -34,7 +35,11 @@ export default function DrawDrawerView({ roomCode }: Props): JSX.Element {
         Dessine ce mot, les autres devinent à voix haute ou en tapant leur réponse.
       </Typography>
 
-      <DrawCanvas roomCode={roomCode} interactive />
+      <DrawCanvas ref={canvasRef} roomCode={roomCode} interactive />
+
+      <Button variant="outlined" onClick={() => canvasRef.current?.clear()} className="draw-drawer__erase">
+        Gommer le dessin
+      </Button>
 
       <Typography className="draw-drawer__prompt">Qui a trouvé ?</Typography>
       <Box className="draw-drawer__grid">

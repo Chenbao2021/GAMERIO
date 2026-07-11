@@ -3,7 +3,7 @@ import { RoomManager, Room, MIN_PLAYERS } from '../../rooms/RoomManager'
 import { GameState, createInitialGameState } from './types'
 import { buildTurnOrder, checkGuess, pickWord } from './engine'
 
-const DRAW_DURATION_MS = 75_000
+const DRAW_DURATION_MS = 120_000
 
 // Per-room pending "time's up" timers, and which room each connected socket is in. Neither
 // belongs in GameState since they're not broadcast-safe data. Kept private to this module so
@@ -207,6 +207,16 @@ export function registerDessineHandlers(io: Server, socket: Socket, roomManager:
     if (room.gameState.turnOrder[room.gameState.currentDrawerIndex] !== socket.id) return
 
     socket.to(room.code).emit('draw:stroke:end', {})
+  })
+
+  // The drawer clears their own canvas locally (optimistic, like every other stroke action) and
+  // this just relays the wipe to everyone else so all views stay in sync.
+  socket.on('draw:clear', (payload: { roomCode: string }) => {
+    const room = roomManager.getRoom(payload?.roomCode)
+    if (!room || room.gameState.phase !== 'drawing') return
+    if (room.gameState.turnOrder[room.gameState.currentDrawerIndex] !== socket.id) return
+
+    socket.to(room.code).emit('draw:clear', {})
   })
 
   socket.on(
