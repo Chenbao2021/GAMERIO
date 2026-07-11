@@ -115,6 +115,10 @@ function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: So
   socketRoomMap.delete(socket.id)
   if (!roomCode) return
 
+  // Always clear first, whether or not this leave ends up emptying the room — a room that
+  // becomes empty returns early below, which used to skip this and leak the pending timeout.
+  clearRoundTimer(roomCode)
+
   const result = roomManager.removePlayer(socket.id)
   socket.leave(roomCode)
   if (!result) return
@@ -124,7 +128,6 @@ function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: So
 
   const wasActive = room.gameState.phase !== 'lobby' && room.gameState.phase !== 'result'
   if (wasActive) {
-    clearRoundTimer(roomCode)
     room.gameState = createInitialGameState()
     room.status = 'lobby'
     io.to(roomCode).emit('draw:interrupted')

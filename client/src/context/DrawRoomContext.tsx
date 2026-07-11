@@ -140,7 +140,17 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
             resolve({ error: res.error })
             return
           }
-          setState((s) => ({ ...s, roomCode: res.roomCode!, playerId: res.playerId!, isHost: true, error: null }))
+          // Reset to a clean slate rather than spreading previous state: this socket may still be
+          // carrying leftover phase/result/interrupted flags from a room it never properly left
+          // (e.g. browser back/forward instead of the "Quitter" button), and a stale phase here
+          // would make the new room briefly render the old game's last screen.
+          setState(() => ({
+            ...initialDrawRoomState,
+            roomCode: res.roomCode!,
+            playerId: res.playerId!,
+            isHost: true,
+            error: null,
+          }))
           resolve({ roomCode: res.roomCode })
         })
       }),
@@ -156,7 +166,13 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
             resolve({ error: res.error })
             return
           }
-          setState((s) => ({ ...s, roomCode, playerId: res.playerId!, isHost: false, error: null }))
+          setState(() => ({
+            ...initialDrawRoomState,
+            roomCode,
+            playerId: res.playerId!,
+            isHost: false,
+            error: null,
+          }))
           resolve({})
         })
       }),
