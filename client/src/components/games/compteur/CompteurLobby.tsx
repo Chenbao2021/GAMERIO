@@ -7,10 +7,11 @@ import './CompteurLobby.less'
 
 export default function CompteurLobby(): JSX.Element {
   const navigate = useNavigate()
-  const { createRoom, joinRoom, state } = useCompteurRoom()
+  const { createRoom, joinRoom, setStepSize, state } = useCompteurRoom()
   const [pseudo, setPseudo] = useState('')
   const [mode, setMode] = useState<CompteurMode>('host')
   const [roomCode, setRoomCode] = useState('')
+  const [stepSize, setLocalStepSize] = useState(1)
   const [loading, setLoading] = useState<'create' | 'join' | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -23,8 +24,10 @@ export default function CompteurLobby(): JSX.Element {
     setLoading('create')
     const res = await createRoom(pseudo.trim(), mode)
     setLoading(null)
-    if (res.roomCode) navigate(`/compteur/${res.roomCode}`)
-    else setLocalError(res.error ?? 'Erreur inconnue.')
+    if (res.roomCode) {
+      setStepSize(stepSize)
+      navigate(`/compteur/${res.roomCode}`)
+    } else setLocalError(res.error ?? 'Erreur inconnue.')
   }
 
   async function handleJoin(): Promise<void> {
@@ -41,8 +44,10 @@ export default function CompteurLobby(): JSX.Element {
     const code = roomCode.trim().toUpperCase()
     const res = await joinRoom(code, pseudo.trim())
     setLoading(null)
-    if (!res.error) navigate(`/compteur/${code}`)
-    else setLocalError(res.error ?? 'Erreur inconnue.')
+    if (!res.error) {
+      setStepSize(stepSize)
+      navigate(`/compteur/${code}`)
+    } else setLocalError(res.error ?? 'Erreur inconnue.')
   }
 
   return (
@@ -80,6 +85,19 @@ export default function CompteurLobby(): JSX.Element {
             ? "Toi seul ajoutes les joueurs et notes les points."
             : 'Chacun rejoint depuis son appareil et note son propre score.'}
         </Typography>
+
+        <Typography className="compteur-lobby__step-label">Pas des boutons rapides</Typography>
+        <ToggleButtonGroup
+          fullWidth
+          exclusive
+          value={stepSize}
+          onChange={(_e, value: number | null) => value && setLocalStepSize(value)}
+          className="compteur-lobby__step"
+        >
+          <ToggleButton value={1}>+1</ToggleButton>
+          <ToggleButton value={5}>+5</ToggleButton>
+          <ToggleButton value={10}>+10</ToggleButton>
+        </ToggleButtonGroup>
 
         {(localError ?? state.error) && (
           <Typography className="compteur-lobby__error">{localError ?? state.error}</Typography>

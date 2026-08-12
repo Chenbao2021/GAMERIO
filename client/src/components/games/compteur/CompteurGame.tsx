@@ -29,18 +29,18 @@ export default function CompteurGame(): JSX.Element {
   const { roomCode: rawRoomCode = '' } = useParams<{ roomCode: string }>()
   const roomCode = rawRoomCode.toUpperCase()
   const navigate = useNavigate()
-  const { state, joinRoom, addPlayer, addPoints, undoLastAction, saveRound, removePlayer, leaveRoom } =
+  const { state, joinRoom, addPlayer, addPoints, undoLastAction, saveRound, setStepSize, removePlayer, leaveRoom } =
     useCompteurRoom()
 
   const [pseudo, setPseudo] = useState('')
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const [joinStepSize, setJoinStepSize] = useState(1)
   const [copied, setCopied] = useState(false)
   const [newPlayerName, setNewPlayerName] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
   const [playerToRemove, setPlayerToRemove] = useState<CompteurPlayerInfo | null>(null)
   const [roundsOpen, setRoundsOpen] = useState(false)
-  const [stepSize, setStepSize] = useState(1)
 
   const alreadyInRoom = state.roomCode === roomCode
   const wasInRoom = useRef(false)
@@ -112,6 +112,7 @@ export default function CompteurGame(): JSX.Element {
       const res = await joinRoom(roomCode, pseudo.trim())
       setJoining(false)
       if (res.error) setJoinError(res.error)
+      else setStepSize(joinStepSize)
     }
 
     return (
@@ -128,6 +129,18 @@ export default function CompteurGame(): JSX.Element {
             inputProps={{ maxLength: 20 }}
             className="compteur-join-gate__field"
           />
+          <Typography className="compteur-join-gate__step-label">Pas des boutons rapides</Typography>
+          <ToggleButtonGroup
+            fullWidth
+            exclusive
+            value={joinStepSize}
+            onChange={(_e, value: number | null) => value && setJoinStepSize(value)}
+            className="compteur-join-gate__step"
+          >
+            <ToggleButton value={1}>+1</ToggleButton>
+            <ToggleButton value={5}>+5</ToggleButton>
+            <ToggleButton value={10}>+10</ToggleButton>
+          </ToggleButtonGroup>
           {joinError && <Typography className="compteur-join-gate__error">{joinError}</Typography>}
           <Button fullWidth variant="contained" onClick={handleJoin} disabled={joining}>
             {joining ? 'Connexion...' : 'Rejoindre'}
@@ -167,22 +180,6 @@ export default function CompteurGame(): JSX.Element {
           />
         </Box>
 
-        {canEditAny && (
-          <Box className="compteur-game__step-selector">
-            <Typography className="compteur-game__step-label">Pas</Typography>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={stepSize}
-              onChange={(_e, value: number | null) => value && setStepSize(value)}
-            >
-              <ToggleButton value={1}>1</ToggleButton>
-              <ToggleButton value={5}>5</ToggleButton>
-              <ToggleButton value={10}>10</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        )}
-
         <Box className="compteur-game__scoreboard">
           {ranked.map((p) => {
             const score = state.scores[p.id] ?? 0
@@ -210,11 +207,11 @@ export default function CompteurGame(): JSX.Element {
 
                 {canEdit && (
                   <Box className="compteur-game__row-controls">
-                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, -stepSize)}>
-                      −{stepSize}
+                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, -state.stepSize)}>
+                      −{state.stepSize}
                     </Button>
-                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, stepSize)}>
-                      +{stepSize}
+                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, state.stepSize)}>
+                      +{state.stepSize}
                     </Button>
                     <TextField
                       size="small"

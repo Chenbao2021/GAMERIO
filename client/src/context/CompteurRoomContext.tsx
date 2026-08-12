@@ -33,6 +33,7 @@ interface CompteurRoomContextValue {
   addPoints: (roomCode: string, targetPlayerId: string, delta: number) => Promise<AckError>
   undoLastAction: (roomCode: string) => Promise<AckError>
   saveRound: (roomCode: string) => Promise<AckError>
+  setStepSize: (stepSize: number) => void
   removePlayer: (roomCode: string, targetPlayerId: string) => Promise<AckError>
   leaveRoom: (roomCode: string) => void
 }
@@ -185,6 +186,10 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
     [socket],
   )
 
+  const setStepSize = useCallback((stepSize: number): void => {
+    setState((s) => ({ ...s, stepSize }))
+  }, [])
+
   const removePlayer = useCallback(
     (roomCode: string, targetPlayerId: string): Promise<AckError> =>
       new Promise((resolve) => {
@@ -212,6 +217,7 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
     addPoints,
     undoLastAction,
     saveRound,
+    setStepSize,
     removePlayer,
     leaveRoom,
   }

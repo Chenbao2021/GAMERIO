@@ -21,6 +21,7 @@ export interface CompteurRoomState {
   players: CompteurPlayerInfo[]
   scores: Record<string, number>
   rounds: CompteurRoundRecord[]
+  stepSize: number
   error: string | null
   notice: string | null
 }
@@ -33,6 +34,7 @@ export const initialCompteurRoomState: CompteurRoomState = {
   players: [],
   scores: {},
   rounds: [],
+  stepSize: 1,
   error: null,
   notice: null,
 }
