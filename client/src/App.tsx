@@ -6,6 +6,7 @@ import PageLoader from './components/PageLoader'
 import { SocketProvider } from './context/SocketContext'
 import { IntruRoomProvider } from './context/IntruRoomContext'
 import { DrawRoomProvider } from './context/DrawRoomContext'
+import { CompteurRoomProvider } from './context/CompteurRoomContext'
 import './App.less'
 
 const Home = lazy(() => import('./components/Home'))
@@ -13,6 +14,8 @@ const IntruLobby = lazy(() => import('./components/games/quiestlintru/IntruLobby
 const IntruGame = lazy(() => import('./components/games/quiestlintru/IntruGame'))
 const DrawLobby = lazy(() => import('./components/games/dessine/DrawLobby'))
 const DrawGame = lazy(() => import('./components/games/dessine/DrawGame'))
+const CompteurLobby = lazy(() => import('./components/games/compteur/CompteurLobby'))
+const CompteurGame = lazy(() => import('./components/games/compteur/CompteurGame'))
 
 const theme = createTheme({
   palette: {
@@ -94,6 +97,14 @@ function DrawLayout(): JSX.Element {
   )
 }
 
+function CompteurLayout(): JSX.Element {
+  return (
+    <CompteurRoomProvider>
+      <Outlet />
+    </CompteurRoomProvider>
+  )
+}
+
 export default function App(): JSX.Element {
   return (
     <StyledEngineProvider injectFirst>
@@ -112,6 +123,10 @@ export default function App(): JSX.Element {
                   <Route path="/dessine" element={<DrawLayout />}>
                     <Route index element={<DrawLobby />} />
                     <Route path=":roomCode" element={<DrawGame />} />
+                  </Route>
+                  <Route path="/compteur" element={<CompteurLayout />}>
+                    <Route index element={<CompteurLobby />} />
+                    <Route path=":roomCode" element={<CompteurGame />} />
                   </Route>
                 </Route>
               </Routes>

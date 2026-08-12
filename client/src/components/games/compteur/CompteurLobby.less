@@ -1,0 +1,60 @@
+@import '../../../styles/mixins.less';
+
+.compteur-lobby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 64px);
+}
+
+.compteur-lobby__title {
+  text-align: center;
+  .section-title();
+}
+
+.compteur-lobby__subtitle {
+  text-align: center;
+  color: #6b7280;
+  margin: 8px 0 24px;
+}
+
+.compteur-lobby__field {
+  margin-bottom: 12px;
+
+  .MuiOutlinedInput-root {
+    border-radius: 4px 9px 6px 4px;
+  }
+}
+
+.compteur-lobby__mode-label {
+  font-family: 'Caveat', cursive;
+  font-size: 1.1rem;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.compteur-lobby__mode {
+  margin-bottom: 6px;
+}
+
+.compteur-lobby__mode-hint {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.compteur-lobby__cta {
+  margin-bottom: 8px;
+}
+
+.compteur-lobby__divider {
+  margin: 20px 0;
+  font-family: 'Caveat', cursive;
+  color: #9ca3af;
+}
+
+.compteur-lobby__error {
+  color: #b91c1c;
+  margin-bottom: 12px;
+  text-align: center;
+}

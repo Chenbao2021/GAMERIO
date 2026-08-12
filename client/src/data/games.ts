@@ -32,4 +32,14 @@ export const games: GameMeta[] = [
     path: '/dessine',
     status: 'available',
   },
+  {
+    key: 'compteur-de-points',
+    name: 'Compteur de points',
+    description:
+      "Ajoute les joueurs et note les scores. En solo à l'animateur, ou en temps réel avec tout le monde.",
+    emoji: '🧮',
+    colorKey: 'green',
+    path: '/compteur',
+    status: 'available',
+  },
 ]

@@ -8,6 +8,8 @@ import { createInitialGameState, GameState } from './games/quiestlintru/types'
 import { registerIntruHandlers } from './games/quiestlintru/socketHandlers'
 import { createInitialGameState as createInitialDrawGameState, GameState as DrawGameState } from './games/dessine/types'
 import { registerDessineHandlers } from './games/dessine/socketHandlers'
+import { createInitialGameState as createInitialCompteurGameState, GameState as CompteurGameState } from './games/compteur/types'
+import { registerCompteurHandlers } from './games/compteur/socketHandlers'
 
 dotenv.config()
 
@@ -23,10 +25,12 @@ const io = new Server(httpServer, { cors: { origin: ALLOWED_ORIGIN } })
 
 const roomManager = new RoomManager<GameState>(createInitialGameState)
 const drawRoomManager = new RoomManager<DrawGameState>(createInitialDrawGameState)
+const compteurRoomManager = new RoomManager<CompteurGameState>(createInitialCompteurGameState)
 
 io.on('connection', (socket) => {
   registerIntruHandlers(io, socket, roomManager)
   registerDessineHandlers(io, socket, drawRoomManager)
+  registerCompteurHandlers(io, socket, compteurRoomManager)
 })
 
 httpServer.listen(PORT, () => console.log(`Server started on http://localhost:${PORT}`))

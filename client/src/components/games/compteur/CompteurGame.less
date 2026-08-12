@@ -1,0 +1,163 @@
+@import '../../../styles/mixins.less';
+
+.compteur-join-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 64px);
+}
+
+.compteur-join-gate__title {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.compteur-join-gate__field {
+  margin-bottom: 12px;
+}
+
+.compteur-join-gate__error {
+  color: #b91c1c;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.compteur-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 0 32px;
+}
+
+.compteur-game__code {
+  letter-spacing: 4px;
+}
+
+.compteur-game__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.compteur-game__mode-chip {
+  border: 2px solid #2d2d2d;
+  background: #fef9c3;
+  font-weight: 600;
+}
+
+.compteur-game__scoreboard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.compteur-game__row {
+  .sketch-card();
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.compteur-game__row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compteur-game__row-name-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.compteur-game__row-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compteur-game__row-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+  color: #b91c1c;
+}
+
+.compteur-game__row-score {
+  font-family: 'Caveat', cursive;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: @accent;
+}
+
+.compteur-game__row-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.compteur-game__row-amount {
+  width: 90px;
+}
+
+.compteur-game__empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.compteur-game__host-tools {
+  width: 100%;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 2px dashed #d1d5db;
+}
+
+.compteur-game__add-player {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.compteur-game__add-player-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 2px solid @dark;
+  border-radius: 4px 9px 6px 4px;
+  background: #fef9c3;
+  font-size: 1.2rem;
+  font-weight: 700;
+
+  &:hover {
+    background: #fef08a;
+  }
+}
+
+.compteur-game__error {
+  color: #b91c1c;
+  margin-top: 12px;
+}
+
+.compteur-game__bottom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.compteur-game__reset {
+  color: #b91c1c;
+}
