@@ -21,7 +21,13 @@ app.use(cors({ origin: ALLOWED_ORIGIN }))
 app.get('/health', (_req, res) => res.json({ status: 'ok' }))
 
 const httpServer = createServer(app)
-const io = new Server(httpServer, { cors: { origin: ALLOWED_ORIGIN } })
+// Tightened from the socket.io defaults (25s/20s) so a player who closes the tab/app without
+// clicking "Quitter" disappears from other players' lists in a few seconds instead of up to ~45s.
+const io = new Server(httpServer, {
+  cors: { origin: ALLOWED_ORIGIN },
+  pingInterval: 5000,
+  pingTimeout: 5000,
+})
 
 const roomManager = new RoomManager<GameState>(createInitialGameState)
 const drawRoomManager = new RoomManager<DrawGameState>(createInitialDrawGameState)

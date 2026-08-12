@@ -143,7 +143,9 @@ export default function CompteurGame(): JSX.Element {
               <Box key={p.id} className="compteur-game__row">
                 <Box className="compteur-game__row-main">
                   <Box className="compteur-game__row-name-group">
-                    <Typography className="compteur-game__row-name">{p.pseudo}</Typography>
+                    <Typography className="compteur-game__row-name">
+                      {p.isHost ? `${p.pseudo} (hôte)` : p.pseudo}
+                    </Typography>
                     {state.isHost && p.id !== state.playerId && (
                       <IconButton
                         size="small"
@@ -207,6 +209,7 @@ export default function CompteurGame(): JSX.Element {
           </Box>
         )}
 
+        {state.notice && <Typography className="compteur-game__notice">{state.notice}</Typography>}
         {state.error && <Typography className="compteur-game__error">{state.error}</Typography>}
 
         <Box className="compteur-game__bottom-actions">

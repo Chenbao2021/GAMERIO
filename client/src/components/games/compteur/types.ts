@@ -14,6 +14,7 @@ export interface CompteurRoomState {
   players: CompteurPlayerInfo[]
   scores: Record<string, number>
   error: string | null
+  notice: string | null
 }
 
 export const initialCompteurRoomState: CompteurRoomState = {
@@ -24,6 +25,7 @@ export const initialCompteurRoomState: CompteurRoomState = {
   players: [],
   scores: {},
   error: null,
+  notice: null,
 }
 
 export interface AckError {

@@ -68,14 +68,22 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
       setState(initialCompteurRoomState)
     }
 
+    function onPlayerLeft(payload: { playerId: string; pseudo: string }): void {
+      const notice = `${payload.pseudo} a quitté la partie.`
+      setState((s) => ({ ...s, notice }))
+      setTimeout(() => setState((s) => (s.notice === notice ? { ...s, notice: null } : s)), 4000)
+    }
+
     socket.on('compteur:room:players', onPlayers)
     socket.on('compteur:score:update', onScores)
     socket.on('compteur:room:removed', onRemoved)
+    socket.on('compteur:room:playerLeft', onPlayerLeft)
 
     return () => {
       socket.off('compteur:room:players', onPlayers)
       socket.off('compteur:score:update', onScores)
       socket.off('compteur:room:removed', onRemoved)
+      socket.off('compteur:room:playerLeft', onPlayerLeft)
     }
   }, [socket])
 
