@@ -6,6 +6,13 @@ export interface CompteurPlayerInfo {
   isHost: boolean
 }
 
+export interface CompteurRoundRecord {
+  id: string
+  savedAt: number
+  scores: Record<string, number>
+  playerNames: Record<string, string>
+}
+
 export interface CompteurRoomState {
   roomCode: string | null
   playerId: string | null
@@ -13,6 +20,7 @@ export interface CompteurRoomState {
   mode: CompteurMode
   players: CompteurPlayerInfo[]
   scores: Record<string, number>
+  rounds: CompteurRoundRecord[]
   error: string | null
   notice: string | null
 }
@@ -24,6 +32,7 @@ export const initialCompteurRoomState: CompteurRoomState = {
   mode: 'host',
   players: [],
   scores: {},
+  rounds: [],
   error: null,
   notice: null,
 }

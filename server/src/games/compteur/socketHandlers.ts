@@ -7,6 +7,9 @@ import { sanitizePlayerName, sanitizeDelta } from './engine'
 // Which room each connected socket is in, kept private to this module like the other games.
 const socketRoomMap = new Map<string, string>()
 
+// Upper bound on the undo stack so a long-running game doesn't grow it unbounded.
+const MAX_HISTORY = 200
+
 function sanitizePseudo(raw: unknown): string {
   const pseudo = typeof raw === 'string' ? raw.trim().slice(0, 20) : ''
   return pseudo || 'Joueur'
@@ -27,6 +30,17 @@ function emitScores(io: Server, room: Room<GameState>): void {
   io.to(room.code).emit('compteur:score:update', { scores: room.gameState.scores })
 }
 
+function emitRounds(io: Server, room: Room<GameState>): void {
+  io.to(room.code).emit('compteur:rounds:update', { rounds: room.gameState.rounds })
+}
+
+// Drops undo history tied to a player who left/was removed, so an undo can't resurrect their score.
+function forgetPlayerHistory(room: Room<GameState>, playerId: string): void {
+  room.gameState.history = room.gameState.history.filter(
+    (h) => h.actorId !== playerId && h.targetPlayerId !== playerId,
+  )
+}
+
 function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: Socket): void {
   const roomCode = socketRoomMap.get(socket.id)
   socketRoomMap.delete(socket.id)
@@ -40,6 +54,7 @@ function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: So
   if (room.players.length === 0) return // room was deleted, nobody left to notify
 
   delete room.gameState.scores[socket.id]
+  forgetPlayerHistory(room, socket.id)
   io.to(roomCode).emit('compteur:room:playerLeft', { playerId: socket.id, pseudo })
   emitPlayers(io, room)
   emitScores(io, room)
@@ -67,6 +82,7 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
     ack({ playerId: socket.id, isHost: false, mode: result.gameState.mode })
     emitPlayers(io, result)
     emitScores(io, result)
+    emitRounds(io, result)
   })
 
   socket.on('compteur:player:add', (payload: { roomCode?: string; name?: string }, ack: (res: unknown) => void) => {
@@ -100,20 +116,50 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
       }
       const delta = sanitizeDelta(payload?.delta)
       room.gameState.scores[targetPlayerId] = (room.gameState.scores[targetPlayerId] ?? 0) + delta
+      room.gameState.history.push({ actorId: socket.id, targetPlayerId, delta })
+      if (room.gameState.history.length > MAX_HISTORY) room.gameState.history.shift()
       ack({})
       emitScores(io, room)
     },
   )
 
-  socket.on('compteur:score:reset', (payload: { roomCode?: string }, ack?: (res: unknown) => void) => {
+  socket.on('compteur:score:undo', (payload: { roomCode?: string }, ack: (res: unknown) => void) => {
+    const room = roomManager.getRoom(payload?.roomCode ?? '')
+    if (!room) {
+      ack({ error: 'Salle introuvable.' })
+      return
+    }
+    const history = room.gameState.history
+    const index = history.map((h) => h.actorId).lastIndexOf(socket.id)
+    if (index === -1) {
+      ack({ error: 'Rien à annuler.' })
+      return
+    }
+    const [entry] = history.splice(index, 1)
+    room.gameState.scores[entry.targetPlayerId] = (room.gameState.scores[entry.targetPlayerId] ?? 0) - entry.delta
+    ack({})
+    emitScores(io, room)
+  })
+
+  socket.on('compteur:round:save', (payload: { roomCode?: string }, ack?: (res: unknown) => void) => {
     const room = roomManager.getRoom(payload?.roomCode ?? '')
     if (!room || room.hostId !== socket.id) {
       ack?.({ error: 'Action non autorisée.' })
       return
     }
+    const playerNames: Record<string, string> = {}
+    for (const p of room.players) playerNames[p.id] = p.pseudo
+    room.gameState.rounds.push({
+      id: nanoid(),
+      savedAt: Date.now(),
+      scores: { ...room.gameState.scores },
+      playerNames,
+    })
     for (const id of Object.keys(room.gameState.scores)) room.gameState.scores[id] = 0
+    room.gameState.history = []
     ack?.({})
     emitScores(io, room)
+    emitRounds(io, room)
   })
 
   socket.on(
@@ -135,6 +181,7 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
         return
       }
       delete room.gameState.scores[targetPlayerId]
+      forgetPlayerHistory(room, targetPlayerId)
 
       // Only real connected players (id === their own socket id) are in a Socket.IO room to notify —
       // a host-added virtual player has no socket, so this is a harmless no-op for them.

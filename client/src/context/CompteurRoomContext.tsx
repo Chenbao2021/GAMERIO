@@ -5,6 +5,7 @@ import {
   type CompteurMode,
   type CompteurPlayerInfo,
   type CompteurRoomState,
+  type CompteurRoundRecord,
   initialCompteurRoomState,
 } from '../components/games/compteur/types'
 
@@ -30,7 +31,8 @@ interface CompteurRoomContextValue {
   joinRoom: (roomCode: string, pseudo: string) => Promise<AckError>
   addPlayer: (roomCode: string, name: string) => Promise<AckError>
   addPoints: (roomCode: string, targetPlayerId: string, delta: number) => Promise<AckError>
-  resetScores: (roomCode: string) => void
+  undoLastAction: (roomCode: string) => Promise<AckError>
+  saveRound: (roomCode: string) => Promise<AckError>
   removePlayer: (roomCode: string, targetPlayerId: string) => Promise<AckError>
   leaveRoom: (roomCode: string) => void
 }
@@ -64,6 +66,10 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
       setState((s) => ({ ...s, scores: payload.scores }))
     }
 
+    function onRounds(payload: { rounds: CompteurRoundRecord[] }): void {
+      setState((s) => ({ ...s, rounds: payload.rounds }))
+    }
+
     function onRemoved(): void {
       setState(initialCompteurRoomState)
     }
@@ -76,12 +82,14 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
 
     socket.on('compteur:room:players', onPlayers)
     socket.on('compteur:score:update', onScores)
+    socket.on('compteur:rounds:update', onRounds)
     socket.on('compteur:room:removed', onRemoved)
     socket.on('compteur:room:playerLeft', onPlayerLeft)
 
     return () => {
       socket.off('compteur:room:players', onPlayers)
       socket.off('compteur:score:update', onScores)
+      socket.off('compteur:rounds:update', onRounds)
       socket.off('compteur:room:removed', onRemoved)
       socket.off('compteur:room:playerLeft', onPlayerLeft)
     }
@@ -155,10 +163,25 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
     [socket],
   )
 
-  const resetScores = useCallback(
-    (roomCode: string): void => {
-      socket.emit('compteur:score:reset', { roomCode })
-    },
+  const undoLastAction = useCallback(
+    (roomCode: string): Promise<AckError> =>
+      new Promise((resolve) => {
+        socket.emit('compteur:score:undo', { roomCode }, (res: AckError) => {
+          if (res.error) setState((s) => ({ ...s, error: res.error ?? null }))
+          resolve(res)
+        })
+      }),
+    [socket],
+  )
+
+  const saveRound = useCallback(
+    (roomCode: string): Promise<AckError> =>
+      new Promise((resolve) => {
+        socket.emit('compteur:round:save', { roomCode }, (res: AckError) => {
+          if (res.error) setState((s) => ({ ...s, error: res.error ?? null }))
+          resolve(res)
+        })
+      }),
     [socket],
   )
 
@@ -187,7 +210,8 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
     joinRoom,
     addPlayer,
     addPoints,
-    resetScores,
+    undoLastAction,
+    saveRound,
     removePlayer,
     leaveRoom,
   }

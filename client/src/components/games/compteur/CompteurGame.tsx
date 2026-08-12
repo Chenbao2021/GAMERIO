@@ -10,7 +10,16 @@ import {
   IconButton,
   Dialog,
   DialogTitle,
+  DialogContent,
   DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material'
 import { useCompteurRoom } from '../../../context/CompteurRoomContext'
 import type { CompteurPlayerInfo } from './types'
@@ -20,7 +29,8 @@ export default function CompteurGame(): JSX.Element {
   const { roomCode: rawRoomCode = '' } = useParams<{ roomCode: string }>()
   const roomCode = rawRoomCode.toUpperCase()
   const navigate = useNavigate()
-  const { state, joinRoom, addPlayer, addPoints, resetScores, removePlayer, leaveRoom } = useCompteurRoom()
+  const { state, joinRoom, addPlayer, addPoints, undoLastAction, saveRound, removePlayer, leaveRoom } =
+    useCompteurRoom()
 
   const [pseudo, setPseudo] = useState('')
   const [joining, setJoining] = useState(false)
@@ -29,6 +39,8 @@ export default function CompteurGame(): JSX.Element {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
   const [playerToRemove, setPlayerToRemove] = useState<CompteurPlayerInfo | null>(null)
+  const [roundsOpen, setRoundsOpen] = useState(false)
+  const [stepSize, setStepSize] = useState(1)
 
   const alreadyInRoom = state.roomCode === roomCode
   const wasInRoom = useRef(false)
@@ -81,6 +93,14 @@ export default function CompteurGame(): JSX.Element {
     setPlayerToRemove(null)
   }
 
+  function handleUndo(): void {
+    undoLastAction(roomCode)
+  }
+
+  function handleSaveRound(): void {
+    saveRound(roomCode)
+  }
+
   if (!alreadyInRoom) {
     async function handleJoin(): Promise<void> {
       if (!pseudo.trim()) {
@@ -117,7 +137,19 @@ export default function CompteurGame(): JSX.Element {
     )
   }
 
+  const canEditAny = state.isHost || state.mode === 'selfEntry'
   const ranked = [...state.players].sort((a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0))
+
+  const roundPlayerIds = Array.from(new Set(state.rounds.flatMap((r) => Object.keys(r.scores))))
+  function playerLabel(playerId: string): string {
+    const current = state.players.find((p) => p.id === playerId)
+    if (current) return current.pseudo
+    for (let i = state.rounds.length - 1; i >= 0; i--) {
+      const name = state.rounds[i].playerNames[playerId]
+      if (name) return name
+    }
+    return playerId
+  }
 
   return (
     <Box component="section" className="app-page compteur-game fade-in">
@@ -134,6 +166,22 @@ export default function CompteurGame(): JSX.Element {
             className="compteur-game__mode-chip"
           />
         </Box>
+
+        {canEditAny && (
+          <Box className="compteur-game__step-selector">
+            <Typography className="compteur-game__step-label">Pas</Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={stepSize}
+              onChange={(_e, value: number | null) => value && setStepSize(value)}
+            >
+              <ToggleButton value={1}>1</ToggleButton>
+              <ToggleButton value={5}>5</ToggleButton>
+              <ToggleButton value={10}>10</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        )}
 
         <Box className="compteur-game__scoreboard">
           {ranked.map((p) => {
@@ -162,11 +210,11 @@ export default function CompteurGame(): JSX.Element {
 
                 {canEdit && (
                   <Box className="compteur-game__row-controls">
-                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, -1)}>
-                      −1
+                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, -stepSize)}>
+                      −{stepSize}
                     </Button>
-                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, 1)}>
-                      +1
+                    <Button size="small" variant="outlined" onClick={() => handleStep(p.id, stepSize)}>
+                      +{stepSize}
                     </Button>
                     <TextField
                       size="small"
@@ -213,9 +261,17 @@ export default function CompteurGame(): JSX.Element {
         {state.error && <Typography className="compteur-game__error">{state.error}</Typography>}
 
         <Box className="compteur-game__bottom-actions">
+          {canEditAny && (
+            <Button variant="text" onClick={handleUndo} className="compteur-game__undo">
+              Annuler
+            </Button>
+          )}
+          <Button variant="text" onClick={() => setRoundsOpen(true)} className="compteur-game__rounds">
+            Voir les manches
+          </Button>
           {state.isHost && (
-            <Button variant="text" onClick={() => resetScores(roomCode)} className="compteur-game__reset">
-              Réinitialiser les scores
+            <Button variant="text" onClick={handleSaveRound} className="compteur-game__save-round">
+              Enregistrer la manche
             </Button>
           )}
           <Button variant="text" onClick={handleLeave} className="compteur-game__leave">
@@ -231,6 +287,52 @@ export default function CompteurGame(): JSX.Element {
           <Button color="error" onClick={handleConfirmRemove}>
             Retirer
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={roundsOpen} onClose={() => setRoundsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Manches</DialogTitle>
+        <DialogContent>
+          {state.rounds.length === 0 ? (
+            <Typography>Aucune manche enregistrée pour l'instant.</Typography>
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Joueur</TableCell>
+                    {state.rounds.map((_, i) => (
+                      <TableCell key={i} align="right">
+                        Manche {i + 1}
+                      </TableCell>
+                    ))}
+                    <TableCell align="right">Total</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {roundPlayerIds.map((playerId) => {
+                    const total = state.rounds.reduce((sum, r) => sum + (r.scores[playerId] ?? 0), 0)
+                    return (
+                      <TableRow key={playerId}>
+                        <TableCell>{playerLabel(playerId)}</TableCell>
+                        {state.rounds.map((r, i) => (
+                          <TableCell key={i} align="right">
+                            {r.scores[playerId] ?? 0}
+                          </TableCell>
+                        ))}
+                        <TableCell align="right">
+                          <strong>{total}</strong>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRoundsOpen(false)}>Fermer</Button>
         </DialogActions>
       </Dialog>
     </Box>
