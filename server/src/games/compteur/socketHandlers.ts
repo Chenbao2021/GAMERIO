@@ -105,14 +105,14 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
     },
   )
 
-  socket.on('compteur:score:reset', (payload: { roomCode?: string }, ack: (res: unknown) => void) => {
+  socket.on('compteur:score:reset', (payload: { roomCode?: string }, ack?: (res: unknown) => void) => {
     const room = roomManager.getRoom(payload?.roomCode ?? '')
     if (!room || room.hostId !== socket.id) {
-      ack({ error: 'Action non autorisée.' })
+      ack?.({ error: 'Action non autorisée.' })
       return
     }
     for (const id of Object.keys(room.gameState.scores)) room.gameState.scores[id] = 0
-    ack({})
+    ack?.({})
     emitScores(io, room)
   })
 
