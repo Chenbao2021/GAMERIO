@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type JSX, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { useSocket } from './SocketContext'
+import { getPlayerToken } from '../utils/playerToken'
 import {
   type AckError,
   type DrawRoomState,
@@ -21,6 +22,10 @@ interface CreateRoomAck extends AckError {
 interface JoinRoomAck extends AckError {
   playerId?: string
   isHost?: boolean
+}
+
+interface ReclaimAck extends AckError {
+  playerId?: string
 }
 
 interface DrawRoomContextValue {
@@ -55,8 +60,32 @@ export function useDrawRoom(): DrawRoomContextValue {
 export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Element {
   const socket = useSocket()
   const [state, setState] = useState<DrawRoomState>(initialDrawRoomState)
+  const roomCodeRef = useRef(state.roomCode)
+  useEffect(() => {
+    roomCodeRef.current = state.roomCode
+  }, [state.roomCode])
 
   useEffect(() => {
+    // Fires on every (re)connection, including the very first one. `socket.recovered` is only
+    // true when Socket.IO managed to restore the exact same socket.id — the common case, already
+    // handled server-side. Otherwise, if we still believe we're in a room, this socket.id is new
+    // to the server: ask it to reclaim our spot via the token instead of sitting stuck on
+    // whatever screen was last rendered before the connection dropped. The rest of the state
+    // (phase, privateWord, wins...) arrives right after via the normal events below, replayed by
+    // the server targeted at this socket.
+    function onConnect(): void {
+      if (socket.recovered) return
+      const roomCode = roomCodeRef.current
+      if (!roomCode) return
+      socket.emit('draw:room:reclaim', { roomCode, token: getPlayerToken() }, (res: ReclaimAck) => {
+        if (res.error || !res.playerId) {
+          setState(initialDrawRoomState)
+          return
+        }
+        setState((s) => ({ ...s, playerId: res.playerId! }))
+      })
+    }
+
     function onPlayers(payload: { players: PlayerInfo[] }): void {
       setState((s) => {
         const me = payload.players.find((p) => p.id === socket.id)
@@ -112,6 +141,7 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
       }))
     }
 
+    socket.on('connect', onConnect)
     socket.on('draw:room:players', onPlayers)
     socket.on('draw:game:settings', onSettings)
     socket.on('draw:privateWord', onPrivateWord)
@@ -121,6 +151,7 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
     socket.on('draw:interrupted', onInterrupted)
 
     return () => {
+      socket.off('connect', onConnect)
       socket.off('draw:room:players', onPlayers)
       socket.off('draw:game:settings', onSettings)
       socket.off('draw:privateWord', onPrivateWord)
@@ -134,7 +165,7 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
   const createRoom = useCallback(
     (pseudo: string): Promise<{ roomCode?: string; error?: string }> =>
       new Promise((resolve) => {
-        socket.emit('draw:room:create', { pseudo }, (res: CreateRoomAck) => {
+        socket.emit('draw:room:create', { pseudo, token: getPlayerToken() }, (res: CreateRoomAck) => {
           if (res.error || !res.roomCode || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })
@@ -160,7 +191,7 @@ export function DrawRoomProvider({ children }: { children: ReactNode }): JSX.Ele
   const joinRoom = useCallback(
     (roomCode: string, pseudo: string): Promise<AckError> =>
       new Promise((resolve) => {
-        socket.emit('draw:room:join', { roomCode, pseudo }, (res: JoinRoomAck) => {
+        socket.emit('draw:room:join', { roomCode, pseudo, token: getPlayerToken() }, (res: JoinRoomAck) => {
           if (res.error || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })

@@ -44,6 +44,19 @@ function forgetPlayerHistory(room: Room<GameState>, playerId: string): void {
   )
 }
 
+// After RoomManager.reclaim() swaps a reconnecting player's id, the game state must follow: their
+// score and undo-history entries were keyed by the old (now-dead) socket.id.
+function rekeyPlayerId(gs: GameState, oldId: string, newId: string): void {
+  if (gs.scores[oldId] !== undefined) {
+    gs.scores[newId] = gs.scores[oldId]
+    delete gs.scores[oldId]
+  }
+  for (const h of gs.history) {
+    if (h.actorId === oldId) h.actorId = newId
+    if (h.targetPlayerId === oldId) h.targetPlayerId = newId
+  }
+}
+
 function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: Socket): void {
   const roomCode = socketRoomMap.get(socket.id)
   socketRoomMap.delete(socket.id)
@@ -82,29 +95,67 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
     }
   }
 
-  socket.on('compteur:room:create', (payload: { pseudo?: string; mode?: string }, ack: (res: unknown) => void) => {
-    const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo))
-    room.gameState.mode = sanitizeMode(payload?.mode)
-    socket.join(room.code)
-    socketRoomMap.set(socket.id, room.code)
-    ack({ roomCode: room.code, playerId: socket.id, isHost: true })
-    emitPlayers(io, room)
-  })
+  socket.on(
+    'compteur:room:create',
+    (payload: { pseudo?: string; mode?: string; token?: string }, ack: (res: unknown) => void) => {
+      const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
+      room.gameState.mode = sanitizeMode(payload?.mode)
+      socket.join(room.code)
+      socketRoomMap.set(socket.id, room.code)
+      ack({ roomCode: room.code, playerId: socket.id, isHost: true })
+      emitPlayers(io, room)
+    },
+  )
 
-  socket.on('compteur:room:join', (payload: { roomCode?: string; pseudo?: string }, ack: (res: unknown) => void) => {
-    const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
-    const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo))
-    if ('error' in result) {
-      ack({ error: result.error })
-      return
-    }
-    socket.join(roomCode)
-    socketRoomMap.set(socket.id, roomCode)
-    ack({ playerId: socket.id, isHost: false, mode: result.gameState.mode })
-    emitPlayers(io, result)
-    emitScores(io, result)
-    emitRounds(io, result)
-  })
+  socket.on(
+    'compteur:room:join',
+    (payload: { roomCode?: string; pseudo?: string; token?: string }, ack: (res: unknown) => void) => {
+      const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
+      const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
+      if ('error' in result) {
+        ack({ error: result.error })
+        return
+      }
+      socket.join(roomCode)
+      socketRoomMap.set(socket.id, roomCode)
+      ack({ playerId: socket.id, isHost: false, mode: result.gameState.mode })
+      emitPlayers(io, result)
+      emitScores(io, result)
+      emitRounds(io, result)
+    },
+  )
+
+  // Sent by a client that noticed it reconnected under a brand-new socket.id (Socket.IO's own
+  // connectionStateRecovery failed — see RECONNECT_GRACE_MS's doc comment) but still remembers
+  // being in this room. Swaps its stale player entry over to the live socket.id instead of
+  // leaving it stuck showing pre-disconnect state forever.
+  socket.on(
+    'compteur:room:reclaim',
+    (payload: { roomCode?: string; token?: string }, ack: (res: unknown) => void) => {
+      const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
+      const result = roomManager.reclaim(roomCode, payload?.token ?? '', socket.id)
+      if ('error' in result) {
+        ack({ error: result.error })
+        return
+      }
+      const { room, oldId } = result
+
+      const pending = pendingRemovals.get(oldId)
+      if (pending) {
+        clearTimeout(pending)
+        pendingRemovals.delete(oldId)
+      }
+      socketRoomMap.delete(oldId)
+      socketRoomMap.set(socket.id, roomCode)
+      socket.join(roomCode)
+      rekeyPlayerId(room.gameState, oldId, socket.id)
+
+      ack({ playerId: socket.id, isHost: room.hostId === socket.id, mode: room.gameState.mode })
+      emitPlayers(io, room)
+      emitScores(io, room)
+      emitRounds(io, room)
+    },
+  )
 
   socket.on('compteur:player:add', (payload: { roomCode?: string; name?: string }, ack: (res: unknown) => void) => {
     const room = roomManager.getRoom(payload?.roomCode ?? '')

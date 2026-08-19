@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type JSX, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { useSocket } from './SocketContext'
+import { getPlayerToken } from '../utils/playerToken'
 import {
   type AckError,
   type CompteurMode,
@@ -16,6 +17,12 @@ interface CreateRoomAck extends AckError {
 }
 
 interface JoinRoomAck extends AckError {
+  playerId?: string
+  isHost?: boolean
+  mode?: CompteurMode
+}
+
+interface ReclaimAck extends AckError {
   playerId?: string
   isHost?: boolean
   mode?: CompteurMode
@@ -54,8 +61,30 @@ export function useCompteurRoom(): CompteurRoomContextValue {
 export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX.Element {
   const socket = useSocket()
   const [state, setState] = useState<CompteurRoomState>(initialCompteurRoomState)
+  const roomCodeRef = useRef(state.roomCode)
+  useEffect(() => {
+    roomCodeRef.current = state.roomCode
+  }, [state.roomCode])
 
   useEffect(() => {
+    // Fires on every (re)connection, including the very first one. `socket.recovered` is only
+    // true when Socket.IO managed to restore the exact same socket.id — the common case, already
+    // handled server-side. Otherwise, if we still believe we're in a room, this socket.id is new
+    // to the server: ask it to reclaim our spot via the token instead of sitting stuck on
+    // whatever screen was last rendered before the connection dropped.
+    function onConnect(): void {
+      if (socket.recovered) return
+      const roomCode = roomCodeRef.current
+      if (!roomCode) return
+      socket.emit('compteur:room:reclaim', { roomCode, token: getPlayerToken() }, (res: ReclaimAck) => {
+        if (res.error || !res.playerId) {
+          setState(initialCompteurRoomState)
+          return
+        }
+        setState((s) => ({ ...s, playerId: res.playerId!, isHost: res.isHost ?? s.isHost, mode: res.mode ?? s.mode }))
+      })
+    }
+
     function onPlayers(payload: { players: CompteurPlayerInfo[]; mode: CompteurMode }): void {
       setState((s) => {
         const me = payload.players.find((p) => p.id === socket.id)
@@ -81,6 +110,7 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
       setTimeout(() => setState((s) => (s.notice === notice ? { ...s, notice: null } : s)), 4000)
     }
 
+    socket.on('connect', onConnect)
     socket.on('compteur:room:players', onPlayers)
     socket.on('compteur:score:update', onScores)
     socket.on('compteur:rounds:update', onRounds)
@@ -88,6 +118,7 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
     socket.on('compteur:room:playerLeft', onPlayerLeft)
 
     return () => {
+      socket.off('connect', onConnect)
       socket.off('compteur:room:players', onPlayers)
       socket.off('compteur:score:update', onScores)
       socket.off('compteur:rounds:update', onRounds)
@@ -99,7 +130,7 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
   const createRoom = useCallback(
     (pseudo: string, mode: CompteurMode): Promise<{ roomCode?: string; error?: string }> =>
       new Promise((resolve) => {
-        socket.emit('compteur:room:create', { pseudo, mode }, (res: CreateRoomAck) => {
+        socket.emit('compteur:room:create', { pseudo, mode, token: getPlayerToken() }, (res: CreateRoomAck) => {
           if (res.error || !res.roomCode || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })
@@ -122,7 +153,7 @@ export function CompteurRoomProvider({ children }: { children: ReactNode }): JSX
   const joinRoom = useCallback(
     (roomCode: string, pseudo: string): Promise<AckError> =>
       new Promise((resolve) => {
-        socket.emit('compteur:room:join', { roomCode, pseudo }, (res: JoinRoomAck) => {
+        socket.emit('compteur:room:join', { roomCode, pseudo, token: getPlayerToken() }, (res: JoinRoomAck) => {
           if (res.error || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })

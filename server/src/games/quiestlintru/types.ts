@@ -28,6 +28,10 @@ export interface GameState {
   votedOutCorrectly: boolean
   wins: Record<string, number> // playerId -> win count, persists across playAgain within the room
   spectatorId: string | null // host sitting out this round because they picked the words themselves
+  // Snapshot of the last 'game:result' broadcast, kept only so a reconnecting player can be resent
+  // the exact same result instead of guessing it back from other fields (see socketHandlers'
+  // reclaim handler).
+  lastResult: { winner: 'civils' | 'intrus'; guessedWord?: string } | null
 }
 
 export function createInitialGameState(): GameState {
@@ -48,5 +52,6 @@ export function createInitialGameState(): GameState {
     votedOutCorrectly: false,
     wins: {},
     spectatorId: null,
+    lastResult: null,
   }
 }

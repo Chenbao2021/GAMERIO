@@ -113,6 +113,20 @@ function advanceDrawer(io: Server, room: Room<GameState>): void {
   io.to(room.code).emit('draw:game:result', { wins: gs.wins })
 }
 
+// After RoomManager.reclaim() swaps a reconnecting player's id, the game state must follow: turn
+// order, win counts and the last round's result all reference the old (now-dead) socket.id.
+function rekeyPlayerId(gs: GameState, oldId: string, newId: string): void {
+  gs.turnOrder = gs.turnOrder.map((id) => (id === oldId ? newId : id))
+  if (gs.wins[oldId] !== undefined) {
+    gs.wins[newId] = gs.wins[oldId]
+    delete gs.wins[oldId]
+  }
+  if (gs.lastRoundResult) {
+    if (gs.lastRoundResult.drawerId === oldId) gs.lastRoundResult.drawerId = newId
+    if (gs.lastRoundResult.solvedById === oldId) gs.lastRoundResult.solvedById = newId
+  }
+}
+
 function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: Socket): void {
   const roomCode = socketRoomMap.get(socket.id)
   socketRoomMap.delete(socket.id)
@@ -155,25 +169,80 @@ export function registerDessineHandlers(io: Server, socket: Socket, roomManager:
     if (room) emitPlayers(io, room)
   }
 
-  socket.on('draw:room:create', (payload: { pseudo?: string }, ack: (res: unknown) => void) => {
-    const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo))
+  socket.on('draw:room:create', (payload: { pseudo?: string; token?: string }, ack: (res: unknown) => void) => {
+    const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
     socket.join(room.code)
     socketRoomMap.set(socket.id, room.code)
     ack({ roomCode: room.code, playerId: socket.id, isHost: true })
     emitPlayers(io, room)
   })
 
-  socket.on('draw:room:join', (payload: { roomCode?: string; pseudo?: string }, ack: (res: unknown) => void) => {
+  socket.on(
+    'draw:room:join',
+    (payload: { roomCode?: string; pseudo?: string; token?: string }, ack: (res: unknown) => void) => {
+      const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
+      const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
+      if ('error' in result) {
+        ack({ error: result.error })
+        return
+      }
+      socket.join(roomCode)
+      socketRoomMap.set(socket.id, roomCode)
+      ack({ playerId: socket.id, isHost: false })
+      emitPlayers(io, result)
+    },
+  )
+
+  // Sent by a client that noticed it reconnected under a brand-new socket.id (Socket.IO's own
+  // connectionStateRecovery failed — see RECONNECT_GRACE_MS's doc comment) but still remembers
+  // being in this room. Swaps its stale player entry over to the live socket.id and replays
+  // whatever the current phase requires (privateWord/phase/roundResult/gameResult) so the client
+  // ends up exactly where a freshly-recovered socket would, via the same events it already listens to.
+  socket.on('draw:room:reclaim', (payload: { roomCode?: string; token?: string }, ack: (res: unknown) => void) => {
     const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
-    const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo))
+    const result = roomManager.reclaim(roomCode, payload?.token ?? '', socket.id)
     if ('error' in result) {
       ack({ error: result.error })
       return
     }
-    socket.join(roomCode)
+    const { room, oldId } = result
+
+    const pending = pendingRemovals.get(oldId)
+    if (pending) {
+      clearTimeout(pending)
+      pendingRemovals.delete(oldId)
+    }
+    socketRoomMap.delete(oldId)
     socketRoomMap.set(socket.id, roomCode)
-    ack({ playerId: socket.id, isHost: false })
-    emitPlayers(io, result)
+    socket.join(roomCode)
+    rekeyPlayerId(room.gameState, oldId, socket.id)
+
+    ack({ playerId: socket.id })
+    emitPlayers(io, room)
+
+    const gs = room.gameState
+    if (gs.phase === 'drawing') {
+      if (gs.turnOrder[gs.currentDrawerIndex] === socket.id) {
+        io.to(socket.id).emit('draw:privateWord', { word: gs.word })
+      }
+      io.to(socket.id).emit('draw:game:phase', {
+        phase: 'drawing',
+        drawerId: gs.turnOrder[gs.currentDrawerIndex],
+        turnOrder: gs.turnOrder,
+        round: gs.round,
+        totalRounds: gs.totalRounds,
+        roundDeadline: gs.roundDeadline,
+      })
+    } else if (gs.phase === 'roundResult' && gs.lastRoundResult) {
+      io.to(socket.id).emit('draw:round:result', {
+        word: gs.lastRoundResult.word,
+        drawerId: gs.lastRoundResult.drawerId,
+        solvedById: gs.lastRoundResult.solvedById,
+        wins: gs.wins,
+      })
+    } else if (gs.phase === 'result') {
+      io.to(socket.id).emit('draw:game:result', { wins: gs.wins })
+    }
   })
 
   socket.on('draw:game:configure', (payload: { roomCode: string; totalRounds: number }) => {

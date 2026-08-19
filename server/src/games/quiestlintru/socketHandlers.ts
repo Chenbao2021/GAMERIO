@@ -91,6 +91,7 @@ function startRound(
   gs.duelGuesses = {}
   gs.votedOutCorrectly = false
   gs.spectatorId = spectatorId
+  gs.lastResult = null
   room.status = 'active'
 
   for (const player of playing) {
@@ -178,6 +179,7 @@ function finishRound(io: Server, room: Room<GameState>, intruderWins: boolean, g
     if (onWinningSide) gs.wins[player.id] = (gs.wins[player.id] ?? 0) + 1
   }
   gs.phase = 'result'
+  gs.lastResult = { winner, guessedWord }
   io.to(room.code).emit('game:result', { winner, guessedWord, wins: gs.wins })
 }
 
@@ -288,6 +290,39 @@ function resolveDuel(io: Server, room: Room<GameState>): void {
   finishRound(io, room, intruderSelfSaved)
 }
 
+// After RoomManager.reclaim() swaps a reconnecting player's id, every id-keyed corner of this
+// (rather large) game state must follow, including the secret intruderId — get this wrong and a
+// reconnect could silently break the win condition or misattribute a vote.
+function rekeyPlayerId(gs: GameState, oldId: string, newId: string): void {
+  if (gs.intruderId === oldId) gs.intruderId = newId
+  gs.turnOrder = gs.turnOrder.map((id) => (id === oldId ? newId : id))
+  for (const clue of gs.clues) {
+    if (clue.playerId === oldId) clue.playerId = newId
+  }
+  if (gs.votes[oldId] !== undefined) {
+    gs.votes[newId] = gs.votes[oldId]
+    delete gs.votes[oldId]
+  }
+  for (const voterId of Object.keys(gs.votes)) {
+    if (gs.votes[voterId] === oldId) gs.votes[voterId] = newId
+  }
+  gs.passed = gs.passed.map((id) => (id === oldId ? newId : id))
+  if (gs.voteTally[oldId] !== undefined) {
+    gs.voteTally[newId] = gs.voteTally[oldId]
+    delete gs.voteTally[oldId]
+  }
+  gs.eliminated = gs.eliminated.map((id) => (id === oldId ? newId : id))
+  if (gs.duelGuesses[oldId] !== undefined) {
+    gs.duelGuesses[newId] = gs.duelGuesses[oldId]
+    delete gs.duelGuesses[oldId]
+  }
+  if (gs.wins[oldId] !== undefined) {
+    gs.wins[newId] = gs.wins[oldId]
+    delete gs.wins[oldId]
+  }
+  if (gs.spectatorId === oldId) gs.spectatorId = newId
+}
+
 function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: Socket): void {
   const roomCode = socketRoomMap.get(socket.id)
   socketRoomMap.delete(socket.id)
@@ -334,25 +369,101 @@ export function registerIntruHandlers(io: Server, socket: Socket, roomManager: R
     if (room) emitPlayers(io, room)
   }
 
-  socket.on('room:create', (payload: { pseudo?: string }, ack: (res: unknown) => void) => {
-    const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo))
+  socket.on('room:create', (payload: { pseudo?: string; token?: string }, ack: (res: unknown) => void) => {
+    const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
     socket.join(room.code)
     socketRoomMap.set(socket.id, room.code)
     ack({ roomCode: room.code, playerId: socket.id, isHost: true })
     emitPlayers(io, room)
   })
 
-  socket.on('room:join', (payload: { roomCode?: string; pseudo?: string }, ack: (res: unknown) => void) => {
+  socket.on(
+    'room:join',
+    (payload: { roomCode?: string; pseudo?: string; token?: string }, ack: (res: unknown) => void) => {
+      const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
+      const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo), payload?.token)
+      if ('error' in result) {
+        ack({ error: result.error })
+        return
+      }
+      socket.join(roomCode)
+      socketRoomMap.set(socket.id, roomCode)
+      ack({ playerId: socket.id, isHost: false })
+      emitPlayers(io, result)
+    },
+  )
+
+  // Sent by a client that noticed it reconnected under a brand-new socket.id (Socket.IO's own
+  // connectionStateRecovery failed — see RECONNECT_GRACE_MS's doc comment) but still remembers
+  // being in this room. Swaps its stale player entry over to the live socket.id, rekeys every
+  // id-keyed corner of the game state (including the secret intruderId), and sends a single
+  // 'game:resync' snapshot rather than replaying 'game:phase'/'game:voteUpdate'/etc. — those
+  // events' handlers reset per-player flags like hasVoted on every *fresh* phase transition, which
+  // would wipe out the very values this reclaim needs to restore.
+  socket.on('room:reclaim', (payload: { roomCode?: string; token?: string }, ack: (res: unknown) => void) => {
     const roomCode = (payload?.roomCode ?? '').trim().toUpperCase()
-    const result = roomManager.joinRoom(roomCode, socket.id, sanitizePseudo(payload?.pseudo))
+    const result = roomManager.reclaim(roomCode, payload?.token ?? '', socket.id)
     if ('error' in result) {
       ack({ error: result.error })
       return
     }
-    socket.join(roomCode)
+    const { room, oldId } = result
+
+    const pending = pendingRemovals.get(oldId)
+    if (pending) {
+      clearTimeout(pending)
+      pendingRemovals.delete(oldId)
+    }
+    socketRoomMap.delete(oldId)
     socketRoomMap.set(socket.id, roomCode)
-    ack({ playerId: socket.id, isHost: false })
-    emitPlayers(io, result)
+    socket.join(roomCode)
+    rekeyPlayerId(room.gameState, oldId, socket.id)
+
+    ack({ playerId: socket.id })
+    emitPlayers(io, room)
+
+    const gs = room.gameState
+    if (gs.wordPair && gs.turnOrder.includes(socket.id)) {
+      const isIntruder = gs.intruderId === socket.id
+      io.to(socket.id).emit('game:privateWord', {
+        word: isIntruder ? gs.wordPair.intruder : gs.wordPair.majority,
+        category: gs.wordPair.category,
+      })
+    }
+
+    io.to(socket.id).emit('game:resync', {
+      phase: gs.phase,
+      turnOrder: gs.turnOrder,
+      currentTurnIndex: gs.currentTurnIndex,
+      round: gs.round,
+      totalRounds: gs.totalRounds,
+      spectatorId: gs.spectatorId,
+      clues: gs.clues,
+      eliminated: gs.eliminated,
+      hasVoted: gs.votes[socket.id] !== undefined || gs.passed.includes(socket.id),
+      hasDuelGuessed: socket.id in gs.duelGuesses,
+      voteUpdate:
+        gs.phase === 'voting' ? { votesCastCount: voteResponseCount(gs), totalPlayers: gs.turnOrder.length } : null,
+      duelUpdate:
+        gs.phase === 'duel'
+          ? { guessesCount: Object.keys(gs.duelGuesses).length, totalPlayers: gs.turnOrder.length }
+          : null,
+      reveal:
+        (gs.phase === 'reveal' || gs.phase === 'guessing') && gs.wordPair
+          ? {
+              intruderId: gs.intruderId,
+              majorityWord: gs.wordPair.majority,
+              intruderWord: gs.wordPair.intruder,
+              voteTally: gs.voteTally,
+              votedOutCorrectly: gs.votedOutCorrectly,
+              wronglyEliminatedId: null,
+            }
+          : null,
+      result:
+        gs.phase === 'result' && gs.lastResult
+          ? { winner: gs.lastResult.winner, guessedWord: gs.lastResult.guessedWord, wins: gs.wins }
+          : null,
+    })
   })
 
   socket.on('game:configure', (payload: { roomCode: string; clueRounds: number }) => {

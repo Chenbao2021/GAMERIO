@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type JSX, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { useSocket } from './SocketContext'
+import { getPlayerToken } from '../utils/playerToken'
 import {
   type AckError,
   type ClueEntry,
@@ -25,6 +26,27 @@ interface CreateRoomAck extends AckError {
 interface JoinRoomAck extends AckError {
   playerId?: string
   isHost?: boolean
+}
+
+interface ReclaimAck extends AckError {
+  playerId?: string
+}
+
+interface ResyncPayload {
+  phase: IntruRoomState['phase']
+  turnOrder: string[]
+  currentTurnIndex: number
+  round: number
+  totalRounds: number
+  spectatorId: string | null
+  clues: ClueEntry[]
+  eliminated: string[]
+  hasVoted: boolean
+  hasDuelGuessed: boolean
+  voteUpdate: VoteUpdateInfo | null
+  duelUpdate: DuelUpdateInfo | null
+  reveal: RevealInfo | null
+  result: ResultInfo | null
 }
 
 interface IntruRoomContextValue {
@@ -58,8 +80,55 @@ export function useIntruRoom(): IntruRoomContextValue {
 export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.Element {
   const socket = useSocket()
   const [state, setState] = useState<IntruRoomState>(initialIntruRoomState)
+  const roomCodeRef = useRef(state.roomCode)
+  useEffect(() => {
+    roomCodeRef.current = state.roomCode
+  }, [state.roomCode])
 
   useEffect(() => {
+    // Fires on every (re)connection, including the very first one. `socket.recovered` is only
+    // true when Socket.IO managed to restore the exact same socket.id — the common case, already
+    // handled server-side. Otherwise, if we still believe we're in a room, this socket.id is new
+    // to the server: ask it to reclaim our spot via the token instead of sitting stuck on
+    // whatever screen was last rendered before the connection dropped. The rest of the state
+    // (phase, privateWord, reveal...) arrives right after via the normal events below, replayed
+    // by the server targeted at this socket.
+    function onConnect(): void {
+      if (socket.recovered) return
+      const roomCode = roomCodeRef.current
+      if (!roomCode) return
+      socket.emit('room:reclaim', { roomCode, token: getPlayerToken() }, (res: ReclaimAck) => {
+        if (res.error || !res.playerId) {
+          setState(initialIntruRoomState)
+          return
+        }
+        setState((s) => ({ ...s, playerId: res.playerId! }))
+      })
+    }
+
+    // Sent only in response to a successful reclaim above — one snapshot instead of replaying
+    // 'game:phase' & co., whose handlers assume a *fresh* phase transition and would otherwise
+    // reset hasVoted/hasDuelGuessed right back to false.
+    function onResync(payload: ResyncPayload): void {
+      setState((s) => ({
+        ...s,
+        phase: payload.phase,
+        turnOrder: payload.turnOrder,
+        currentTurnIndex: payload.currentTurnIndex,
+        round: payload.round,
+        totalRounds: payload.totalRounds,
+        spectatorId: payload.spectatorId,
+        clues: payload.clues,
+        eliminated: payload.eliminated,
+        hasVoted: payload.hasVoted,
+        hasDuelGuessed: payload.hasDuelGuessed,
+        voteUpdate: payload.voteUpdate,
+        duelUpdate: payload.duelUpdate,
+        reveal: payload.reveal,
+        result: payload.result,
+      }))
+    }
+
     function onPlayers(payload: { players: PlayerInfo[] }): void {
       setState((s) => {
         const me = payload.players.find((p) => p.id === socket.id)
@@ -154,6 +223,7 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
       }))
     }
 
+    socket.on('connect', onConnect)
     socket.on('room:players', onPlayers)
     socket.on('game:settings', onSettings)
     socket.on('game:privateWord', onPrivateWord)
@@ -165,8 +235,10 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
     socket.on('game:reveal', onReveal)
     socket.on('game:result', onResult)
     socket.on('game:interrupted', onInterrupted)
+    socket.on('game:resync', onResync)
 
     return () => {
+      socket.off('connect', onConnect)
       socket.off('room:players', onPlayers)
       socket.off('game:settings', onSettings)
       socket.off('game:privateWord', onPrivateWord)
@@ -178,13 +250,14 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
       socket.off('game:reveal', onReveal)
       socket.off('game:result', onResult)
       socket.off('game:interrupted', onInterrupted)
+      socket.off('game:resync', onResync)
     }
   }, [socket])
 
   const createRoom = useCallback(
     (pseudo: string): Promise<{ roomCode?: string; error?: string }> =>
       new Promise((resolve) => {
-        socket.emit('room:create', { pseudo }, (res: CreateRoomAck) => {
+        socket.emit('room:create', { pseudo, token: getPlayerToken() }, (res: CreateRoomAck) => {
           if (res.error || !res.roomCode || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })
@@ -210,7 +283,7 @@ export function IntruRoomProvider({ children }: { children: ReactNode }): JSX.El
   const joinRoom = useCallback(
     (roomCode: string, pseudo: string): Promise<AckError> =>
       new Promise((resolve) => {
-        socket.emit('room:join', { roomCode, pseudo }, (res: JoinRoomAck) => {
+        socket.emit('room:join', { roomCode, pseudo, token: getPlayerToken() }, (res: JoinRoomAck) => {
           if (res.error || !res.playerId) {
             setState((s) => ({ ...s, error: res.error ?? 'Erreur inconnue.' }))
             resolve({ error: res.error })

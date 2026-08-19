@@ -20,6 +20,11 @@ export const RECONNECT_GRACE_MS = 120_000
 export interface Player {
   id: string
   pseudo: string
+  // Stable per-browser identity (crypto.randomUUID(), stored in localStorage), separate from `id`
+  // (the current socket.id). Lets a reconnecting socket reclaim this exact player's spot even when
+  // it comes back with a brand-new socket.id — see RoomManager.reclaim(). Host-added virtual
+  // players (compteur's "add a player the host controls") have no token: they're never reclaimed.
+  token?: string
 }
 
 export interface Room<TGameState> {
@@ -47,11 +52,11 @@ export class RoomManager<TGameState> {
     return code
   }
 
-  createRoom(hostId: string, pseudo: string): Room<TGameState> {
+  createRoom(hostId: string, pseudo: string, token?: string): Room<TGameState> {
     const room: Room<TGameState> = {
       code: this.uniqueCode(),
       hostId,
-      players: [{ id: hostId, pseudo }],
+      players: [{ id: hostId, pseudo, token }],
       status: 'lobby',
       gameState: this.createInitialGameState(),
     }
@@ -59,17 +64,38 @@ export class RoomManager<TGameState> {
     return room
   }
 
-  joinRoom(code: string, playerId: string, pseudo: string): JoinResult<TGameState> {
+  joinRoom(code: string, playerId: string, pseudo: string, token?: string): JoinResult<TGameState> {
     const room = this.rooms.get(code)
     if (!room) return { error: 'Partie introuvable.' }
     if (room.status !== 'lobby') return { error: 'La partie a déjà commencé.' }
     if (room.players.length >= MAX_PLAYERS) return { error: 'La partie est complète.' }
-    room.players.push({ id: playerId, pseudo })
+    room.players.push({ id: playerId, pseudo, token })
     return room
   }
 
   getRoom(code: string): Room<TGameState> | undefined {
     return this.rooms.get(code)
+  }
+
+  /**
+   * Reassigns a known player's `id` to a new socket.id, keyed by their stable `token` rather than
+   * their old (now-dead) socket.id. Used when a reconnecting client comes back with a brand-new
+   * socket.id — e.g. Socket.IO's own connectionStateRecovery lost the race against the mobile
+   * app's own reconnect attempt and couldn't restore the original id itself. The caller is
+   * responsible for rekeying any game-state fields that reference the old id (scores, turn order,
+   * roles, etc.) since RoomManager doesn't know that shape.
+   */
+  reclaim(code: string, token: string, newId: string): { room: Room<TGameState>; oldId: string } | { error: string } {
+    const room = this.rooms.get(code)
+    if (!room) return { error: 'Partie introuvable.' }
+    const player = token ? room.players.find((p) => p.token === token) : undefined
+    if (!player) return { error: 'Joueur introuvable.' }
+    const oldId = player.id
+    if (oldId !== newId) {
+      player.id = newId
+      if (room.hostId === oldId) room.hostId = newId
+    }
+    return { room, oldId }
   }
 
   /** Removes a player from whichever room they're in (at most one). Deletes the room if it becomes empty. */
