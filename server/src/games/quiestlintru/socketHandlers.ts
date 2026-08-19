@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io'
-import { RoomManager, Room, Player, MIN_PLAYERS } from '../../rooms/RoomManager'
+import { RoomManager, Room, Player, MIN_PLAYERS, RECONNECT_GRACE_MS } from '../../rooms/RoomManager'
 import { GameState, WordPair, createInitialGameState } from './types'
 import {
   pickWordPair,
@@ -50,6 +50,9 @@ const GUESS_TIMEOUT_MS = 20_000
 // Neither belongs in GameState since they're not broadcast-safe data.
 const guessTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const socketRoomMap = new Map<string, string>()
+
+// Sockets waiting out their reconnect grace period before handleLeave actually runs.
+const pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>()
 
 function sanitizePseudo(raw: unknown): string {
   const pseudo = typeof raw === 'string' ? raw.trim().slice(0, 20) : ''
@@ -317,6 +320,20 @@ function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: So
 }
 
 export function registerIntruHandlers(io: Server, socket: Socket, roomManager: RoomManager<GameState>): void {
+  // Socket.IO restored this exact socket.id via connectionStateRecovery: the player never left
+  // the room server-side, so just cancel their pending removal and resync the player list
+  // (mid-game phase/role state is recovered separately via Socket.IO's own missed-packet replay).
+  if (socket.recovered) {
+    const pending = pendingRemovals.get(socket.id)
+    if (pending) {
+      clearTimeout(pending)
+      pendingRemovals.delete(socket.id)
+    }
+    const roomCode = socketRoomMap.get(socket.id)
+    const room = roomCode ? roomManager.getRoom(roomCode) : undefined
+    if (room) emitPlayers(io, room)
+  }
+
   socket.on('room:create', (payload: { pseudo?: string }, ack: (res: unknown) => void) => {
     const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo))
     socket.join(room.code)
@@ -501,5 +518,15 @@ export function registerIntruHandlers(io: Server, socket: Socket, roomManager: R
   )
 
   socket.on('room:leave', () => handleLeave(io, roomManager, socket))
-  socket.on('disconnect', () => handleLeave(io, roomManager, socket))
+  socket.on('disconnect', () => {
+    // A dropped connection (mobile app backgrounded, brief network loss) isn't necessarily a
+    // real "leave" — give it RECONNECT_GRACE_MS to come back via connectionStateRecovery before
+    // actually removing the player (and interrupting the game). An explicit 'room:leave' above
+    // bypasses this.
+    const timer = setTimeout(() => {
+      pendingRemovals.delete(socket.id)
+      handleLeave(io, roomManager, socket)
+    }, RECONNECT_GRACE_MS)
+    pendingRemovals.set(socket.id, timer)
+  })
 }

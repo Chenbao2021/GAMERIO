@@ -1,0 +1,35 @@
+.connection-banner {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #fff8e1;
+  border: 2px solid #2d2d2d;
+  border-radius: 4px 9px 6px 4px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.connection-banner__spinner {
+  animation: connectionBannerSpin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+.connection-banner__label {
+  font-family: 'Caveat', cursive;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #2d2d2d;
+  white-space: nowrap;
+}
+
+@keyframes connectionBannerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

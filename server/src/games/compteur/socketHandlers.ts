@@ -1,11 +1,14 @@
 import { nanoid } from 'nanoid'
 import { Server, Socket } from 'socket.io'
-import { RoomManager, Room } from '../../rooms/RoomManager'
+import { RoomManager, Room, RECONNECT_GRACE_MS } from '../../rooms/RoomManager'
 import { GameState, CompteurMode } from './types'
 import { sanitizePlayerName, sanitizeDelta } from './engine'
 
 // Which room each connected socket is in, kept private to this module like the other games.
 const socketRoomMap = new Map<string, string>()
+
+// Sockets waiting out their reconnect grace period before handleLeave actually runs.
+const pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>()
 
 // Upper bound on the undo stack so a long-running game doesn't grow it unbounded.
 const MAX_HISTORY = 200
@@ -61,6 +64,24 @@ function handleLeave(io: Server, roomManager: RoomManager<GameState>, socket: So
 }
 
 export function registerCompteurHandlers(io: Server, socket: Socket, roomManager: RoomManager<GameState>): void {
+  // Socket.IO restored this exact socket.id via connectionStateRecovery: the player never left
+  // the room server-side, so just cancel their pending removal and resync them (harmless no-op
+  // for everyone else already up to date).
+  if (socket.recovered) {
+    const pending = pendingRemovals.get(socket.id)
+    if (pending) {
+      clearTimeout(pending)
+      pendingRemovals.delete(socket.id)
+    }
+    const roomCode = socketRoomMap.get(socket.id)
+    const room = roomCode ? roomManager.getRoom(roomCode) : undefined
+    if (room) {
+      emitPlayers(io, room)
+      emitScores(io, room)
+      emitRounds(io, room)
+    }
+  }
+
   socket.on('compteur:room:create', (payload: { pseudo?: string; mode?: string }, ack: (res: unknown) => void) => {
     const room = roomManager.createRoom(socket.id, sanitizePseudo(payload?.pseudo))
     room.gameState.mode = sanitizeMode(payload?.mode)
@@ -196,5 +217,14 @@ export function registerCompteurHandlers(io: Server, socket: Socket, roomManager
   )
 
   socket.on('compteur:room:leave', () => handleLeave(io, roomManager, socket))
-  socket.on('disconnect', () => handleLeave(io, roomManager, socket))
+  socket.on('disconnect', () => {
+    // A dropped connection (mobile app backgrounded, brief network loss) isn't necessarily a
+    // real "leave" — give it RECONNECT_GRACE_MS to come back via connectionStateRecovery before
+    // actually removing the player. An explicit 'compteur:room:leave' above bypasses this.
+    const timer = setTimeout(() => {
+      pendingRemovals.delete(socket.id)
+      handleLeave(io, roomManager, socket)
+    }, RECONNECT_GRACE_MS)
+    pendingRemovals.set(socket.id, timer)
+  })
 }

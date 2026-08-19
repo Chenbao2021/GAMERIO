@@ -8,6 +8,15 @@ const generateCode = customAlphabet(ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH)
 export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 8
 
+// How long a socket that dropped (mobile app backgrounded, brief network loss, etc.) has to
+// reconnect before we treat it as a real "player left". Paired with Socket.IO's connection state
+// recovery (see index.ts), a reconnect within this window keeps the same socket.id and Socket.IO
+// room membership, so the pending removal below is simply cancelled and the player never notices.
+// 2 minutes matches Socket.IO's own connectionStateRecovery default and comfortably covers a
+// phone switching apps, taking a call, etc. — but note a player who genuinely quits mid-turn also
+// leaves the game "hanging" for the group until this window elapses.
+export const RECONNECT_GRACE_MS = 120_000
+
 export interface Player {
   id: string
   pseudo: string

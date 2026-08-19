@@ -3,7 +3,7 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { RoomManager } from './rooms/RoomManager'
+import { RoomManager, RECONNECT_GRACE_MS } from './rooms/RoomManager'
 import { createInitialGameState, GameState } from './games/quiestlintru/types'
 import { registerIntruHandlers } from './games/quiestlintru/socketHandlers'
 import { createInitialGameState as createInitialDrawGameState, GameState as DrawGameState } from './games/dessine/types'
@@ -23,10 +23,15 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }))
 const httpServer = createServer(app)
 // Tightened from the socket.io defaults (25s/20s) so a player who closes the tab/app without
 // clicking "Quitter" disappears from other players' lists in a few seconds instead of up to ~45s.
+// connectionStateRecovery lets a socket that reconnects within maxDisconnectionDuration keep its
+// original socket.id and Socket.IO room membership, and replays any room broadcasts it missed —
+// this is what makes the per-game reconnect grace period (see RECONNECT_GRACE_MS) actually work,
+// instead of the player coming back as a stranger with a brand-new id.
 const io = new Server(httpServer, {
   cors: { origin: ALLOWED_ORIGIN },
   pingInterval: 5000,
   pingTimeout: 5000,
+  connectionStateRecovery: { maxDisconnectionDuration: RECONNECT_GRACE_MS },
 })
 
 const roomManager = new RoomManager<GameState>(createInitialGameState)

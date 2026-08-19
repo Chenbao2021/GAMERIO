@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Outlet, useLocation } from 'react-router-
 import { ThemeProvider, createTheme, CssBaseline, StyledEngineProvider } from '@mui/material'
 import Navbar from './components/Navbar'
 import PageLoader from './components/PageLoader'
+import ConnectionBanner from './components/ConnectionBanner'
 import { SocketProvider } from './context/SocketContext'
 import { IntruRoomProvider } from './context/IntruRoomContext'
 import { DrawRoomProvider } from './context/DrawRoomContext'
@@ -111,6 +112,7 @@ export default function App(): JSX.Element {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <SocketProvider>
+          <ConnectionBanner />
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
